@@ -1,7 +1,13 @@
 using Ferrite
 
-# Generate a simple hexahedral mesh with one element
-mesh = generate_simple_mesh(QuadraticHexahedron, (1, 1, 1))
+# Function to generate a simple hexahedral mesh with one element
+function generate_simple_mesh_sta()
+    mesh = generate_grid(SerendipityQuadraticHexahedron, (1, 1, 1))
+    return mesh
+end
+
+# Generate the mesh
+mesh = generate_simple_mesh_sta()
 
 # Display basic information about the mesh
 println("Generated mesh:")
@@ -14,6 +20,6 @@ for node in mesh.nodes
 end
 
 println("Elements:")
-for elem in mesh.elements
+for elem in mesh.cells
     println(elem)
 end
