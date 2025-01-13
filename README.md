@@ -36,9 +36,12 @@ Material models are essential for simulating how materials react under loading a
    ```bash
    git clone https://github.com/prashanthgadwala/ferrite-fortran-integration_using_Julia.git
    cd ferrite-fortran-integration_using_Julia
-2. install Julia dependencies:
+2. Download and install Julia
+   '''bash
+   curl -fsSL https://install.julialang.org | sh
+3. install Julia dependencies:
    ```bash
-   julia --project=. -e 'using Pkg; Pkg.instantiate()'
+   import Pkg; Pkg.add("Ferrite")
 3. Compile Fortran material model subroutine:
    ```bash
    gfortran -o material_model.so -shared -fPIC src/material_models/material_model.f90
@@ -49,10 +52,10 @@ Material models are essential for simulating how materials react under loading a
    julia src/main.jl
 2. Modify and test more advanced load cases in the examples/ directory.
 
-Contribution
+### Contribution
 
 Contributions are welcome! Please create a fork, make changes, and open a pull request. For major changes, discuss them first via an issue.
 
-License
+### License
 
 This project is licensed under the MIT License.
