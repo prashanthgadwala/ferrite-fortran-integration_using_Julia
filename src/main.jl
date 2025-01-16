@@ -1,27 +1,21 @@
-# src/main.jl
+include("PREPROCESSING/Mesh_Files/logo_mesh.jl")
+include("PREPROCESSING/Material_Models/Linear_Elasticity.jl")
 
-include("fe_simulation.jl")
+include("PROCESSING/fe_simulation_LE.jl")
 
-using .FESimulation
+include("POSTPROCESSING/Linear_Elastic.jl")
+
 
 function main()
-    # Generate the mesh
-    mesh = generate_simple_mesh()
+    # Preprocessing
+    grid = generate_mesh()
+    C = define_material_model()
 
-    # Display the generated mesh
-    println("Generated mesh:")
-    println(mesh)
+    # Processing
+    dh, cellvalues, u, qr = run_simulation(grid, C)
 
-    # Optionally inspect nodes and elements
-    println("Nodes:")
-    for node in mesh.nodes
-        println(node)
-    end
-
-    println("Elements:")
-    for elem in mesh.elements
-        println(elem)
-    end
+    # Postprocessing
+    postprocess(grid, dh, cellvalues, u, C, qr)
 end
 
 main()
