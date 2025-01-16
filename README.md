@@ -15,13 +15,17 @@ Material models are essential for simulating how materials react under loading a
 ## Repository Structure
 
 - `src/`: Source code for Julia and Fortran implementations.
+  - `preprocessing/`: Directory for preprocessing tasks and material model implementations.
+    - `material_model.f90`: Fortran material model subroutine.
+  - `processing/`: Directory for processing tasks.
+    - `fe_simulation.jl`: FE simulation setup.
+  - `postprocessing/`: Directory for postprocessing tasks.
   - `main.jl`: Main script for running simulations.
   - `fortran_wrapper.jl`: Julia-Fortran integration code.
-  - `fe_simulation.jl`: FE simulation setup.
-  - `material_models/`: Directory for material model implementations.
 - `test/`: Unit tests and example load case results.
 - `docs/`: Documentation and results, including plots or images from simulations.
 - `examples/`: Sample scripts to demonstrate basic and advanced use cases.
+
 
 ## Getting Started
 
