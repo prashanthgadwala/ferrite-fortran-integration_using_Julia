@@ -1,5 +1,7 @@
 using Ferrite, Tensors, SparseArrays, LinearAlgebra, Printf
 
+
+
 struct J2Plasticity{T, S <: SymmetricTensor{4, 3, T}}
     G::T  # Shear modulus
     K::T  # Bulk modulus
