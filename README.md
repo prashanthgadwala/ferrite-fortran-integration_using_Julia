@@ -71,7 +71,7 @@ Material models are essential for simulating how materials react under loading a
    import Pkg; Pkg.add("Ferrite")
 3. Compile Fortran material model subroutine:
    ```bash
-   gfortran -o material_model.so -shared -fPIC src/material_models/material_model.f90
+   gfortran -o material_model.so -shared -fPIC src/PREPROCESSING/Material_Models/umat.f90
 
 ### Usage
 1. Run a simple load case:
