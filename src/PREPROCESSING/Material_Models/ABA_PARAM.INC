@@ -1,5 +1,3 @@
-C     ABA_PARAM.INC - Parameter definitions for UMAT subroutine
-
       INTEGER NDI, NSHR, NTENS, NSTATV, NPROPS
       PARAMETER (NDI=3)          ! Number of direct stress components
       PARAMETER (NSHR=3)         ! Number of shear stress components

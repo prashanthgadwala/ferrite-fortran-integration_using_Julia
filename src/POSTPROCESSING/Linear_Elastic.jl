@@ -18,6 +18,7 @@ function postprocess(grid, dh, cellvalues, u, C, qr)
             avg_cell_stresses[2][cellid(cell)] = σ_avg[2, 2]
             avg_cell_stresses[3][cellid(cell)] = σ_avg[1, 2]
         end
+        println("Calculated stresses", qp_stresses, avg_cell_stresses)
         return qp_stresses, avg_cell_stresses
     end
 
