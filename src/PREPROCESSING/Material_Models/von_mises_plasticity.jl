@@ -86,8 +86,8 @@ end
 
 function create_values(interpolation)
     # setup quadrature rules
-    qr      = QuadratureRule{RefTetrahedron}(2)
-    facet_qr = FacetQuadratureRule{RefTetrahedron}(3)
+    qr      = QuadratureRule{RefHexahedron}(2)
+    facet_qr = FacetQuadratureRule{RefHexahedron}(3)
 
     # cell and facetvalues for u
     cellvalues_u = CellValues(qr, interpolation)
@@ -203,8 +203,8 @@ function solve()
     nels = (10n, n, 2n) # number of elements in each spatial direction
     P1 = Vec((0.0, 0.0, 0.0))  # start point for geometry
     P2 = Vec((L, w, h))        # end point for geometry
-    grid = generate_grid(Tetrahedron, nels, P1, P2)
-    interpolation = Lagrange{RefTetrahedron, 1}()^3
+    grid = generate_grid(Hexahedron, nels, P1, P2)
+    interpolation = Lagrange{RefHexahedron, 2}()^3
 
     dh = create_dofhandler(grid, interpolation) # JuaFEM helper function
     dbcs = create_bc(dh, grid) # create Dirichlet boundary-conditions
