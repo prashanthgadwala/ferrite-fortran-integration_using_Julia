@@ -54,20 +54,10 @@ C     !--------------------------------------------------------------
       REAL*8 SSE, SPD, SCD, RPL, DTIME, TEMP, CELENT, DRPLDT
       REAL*8 PNEWDT, DTEMP, R, dR, ddR
 
-      IF (PROPS(1) .GT. 2.D0) THEN
-      
-        call VEVP(STRESS,STATEV,DDSDDE,STRAN,NTENS,NSTATV,PROPS,
+      call VEVP(STRESS,STATEV,DDSDDE,STRAN,NTENS,NSTATV,PROPS,
      &         NPROPS,DTIME,DSTRAN,KINC,KSTEP,NOEL,DFGRD0,DFGRD1,
      &         PNEWDT)
 
-        return
-
-      ELSE
-        call NEOHOOK(STRESS,STATEV,DDSDDE,STRAN,NTENS,NSTATV,PROPS,
-     &         NPROPS,DTIME,DSTRAN,KINC,KSTEP,NOEL,DFGRD0,DFGRD1)
-        return
-
-      END IF
       end
 
 
@@ -75,24 +65,27 @@ C     !--------------------------------------------------------------
 C     !                Finite Strain VEVP Subroutine
 C     !--------------------------------------------------------------
 
-      SUBROUTINE VEVP(STRESS,STATEV,DDSDDE,STRAN,NTENS,NSTATV,
-     1   PROPS,NPROPS,DTIME,DSTRAN,KINC,KSTEP,NOEL,DFGRD0,DFGRD1,
-     2   PNEWDT)
+      SUBROUTINE VEVP(STRESS, STATEV, DDSDDE, STRAN, NTENS, NSTATV, &
+                PROPS, NPROPS, DTIME, DSTRAN, KINC, KSTEP, NOEL, DFGRD0, DFGRD1, PNEWDT)
 
 
          IMPLICIT NONE
 
-         INTEGER, PARAMETER :: double=kind(1.d0)
-         INTEGER, PARAMETER :: prec=double
-       
-         INTEGER, INTENT(IN)      :: ntens,nprops,nstatv
-         INTEGER, INTENT(IN)      :: kinc,kstep,noel
-         REAL(prec), INTENT(IN)   :: stran(ntens), dstran(ntens)
-         REAL(prec), INTENT(IN)   :: props(nprops), dtime
-         REAL(prec), INTENT(IN)   :: DFGRD0(3,3), DFGRD1(3,3)
-         REAL(prec), INTENT(INOUT) :: statev(nstatv)
-         REAL(prec), INTENT(OUT)   :: stress(ntens)
-         REAL(prec), INTENT(OUT)   :: ddsdde(ntens,ntens), PNEWDT   
+         ! Parameter for double precision
+          INTEGER, PARAMETER :: dp = KIND(1.0D0)
+
+          ! Input arguments
+          INTEGER, INTENT(IN) :: NTENS, NPROPS, NSTATV
+          INTEGER, INTENT(IN) :: KINC, KSTEP, NOEL
+          REAL(dp), INTENT(IN) :: STRAN(NTENS), DSTRAN(NTENS)
+          REAL(dp), INTENT(IN) :: PROPS(NPROPS), DTIME
+          REAL(dp), INTENT(IN) :: DFGRD0(3, 3), DFGRD1(3, 3)
+
+          ! Input/Output arguments
+          REAL(dp), INTENT(INOUT) :: STATEV(NSTATV)
+          REAL(dp), INTENT(OUT) :: STRESS(NTENS)
+          REAL(dp), INTENT(OUT) :: DDSDDE(NTENS, NTENS), PNEWDT
+  
 
          !Declaration of local variables
          INTEGER    :: ii, jj, O6, order
