@@ -1,39 +1,40 @@
-!     UMAT - Finite strain VEVP
-!     Based on Paper by V.-D.Nguyen et al. https://orbi.uliege.be/handle/2268/197898
+! UMAT - Finite strain VEVP
+! Based on Paper by V.-D.Nguyen et al. https://orbi.uliege.be/handle/2268/197898
 
-!     Total no of material parameters : 51 
-!     Total no of internal variables (STATEV) : 108
-!     
-!     Note: The UMAT is hard!oded for 8 Maxwell VE Bran!hes.
-!           If you feel the need for more branches send me an email
-!           I will add more.
-!
-!     Note: Tollerance and max iteration for the newton raphson solver are hard coded
-!           as variables TOLL_G and MAX_i respectively
-!
-!     Note : Computations are done in standard matrix notation and
-!            at the end changed to voit notation where needed for return to main 
-!           routine. I understand this isn't the most elegant way of 
-!            doing things but when dealing with tensors 
-!            with 4 or more dummy indices, I can code much 
-!            faster this way. If you know the algebra and have the 
-!            time to work in voit notation, change it and send me an 
-!            email.
-!
-!     Note : Consistent tangents are calculated numerically. 
-    !         Tollerance for numeric tangent is hardcoded as variable TOLL.
+! Total no of material parameters : 51 
+! Total no of internal variables (STATEV) : 108
+! 
+! Note: The UMAT is hardcoded for 8 Maxwell VE Branches.
+! If you feel the need for more branches send me an email
+! I will add more.
+! 
+! Note: Tollerance and max iteration for the newton raphson solver are hard coded
+! as variables TOLL_G and MAX_i respectively
+! 
+! Note : Computations are done in standard matrix notation and
+! at the end changed to voit notation where needed for return to main 
+! routine. I understand this isn't the most elegant way of 
+! doing things but when dealing with tensors 
+! with 4 or more dummy indices, I can code much 
+! faster this way. If you know the algebra and have the 
+! time to work in voit notation, change it and send me an 
+! email.
+! 
+! Note : Consistent tangents are calculated numerically. 
+! Tollerance for numeric tangent is hardcoded as variable TOLL.
 
-    !  Mohib Mustafa - First Version - IMDEA 15 March 2022
-    !  Mohib Mustafa - Added more VE Branches -  ULIEGE 10 Feburary 2023
-    !  mohibmustafa@gmail.com
+! Mohib Mustafa - First Version - IMDEA 15 March 2022
+! Mohib Mustafa - Added more VE Branches -  ULIEGE 10 Feburary 2023
+! mohibmustafa@gmail.com
 
 
 
-     !--------------------------------------------------------------
-     !                     UMAT SUBROUTINE
-     !--------------------------------------------------------------
+! !--------------------------------------------------------------
+! !                     UMAT SUBROUTINE
+! !--------------------------------------------------------------
 
       SUBROUTINE UMAT(STRESS,STATEV,DDSDDE,SSE,SPD,SCD,
+      implicit none
      1           RPL,DDSDDT,DRPLDE,DRPLDT,
      2           STRAN,DSTRAN,TIME,DTIME,TEMP,DTEMP,PREDEF,
      3           DPRED,CMNAME,
@@ -44,7 +45,7 @@
 
       INCLUDE 'ABA_PARAM.INC'
 
-      CHARACTER*80 CMNAME
+! HARACTER*80 CMNAME
       REAL*8 STRESS(NTENS),STATEV(NSTATV),
      1     DDSDDE(NTENS,NTENS),DDSDDT(NTENS),DRPLDE(NTENS),
      2     STRAN(NTENS),DSTRAN(NTENS),TIME(2),PREDEF(1),DPRED(1),
@@ -71,11 +72,12 @@
       end
 
 
-     !--------------------------------------------------------------
-     !                Finite Strain VEVP Subroutine
-     !--------------------------------------------------------------
+! !--------------------------------------------------------------
+! !                Finite Strain VEVP Subroutine
+! !--------------------------------------------------------------
 
       SUBROUTINE VEVP(STRESS,STATEV,DDSDDE,STRAN,NTENS,NSTATV,
+      implicit none
      1   PROPS,NPROPS,DTIME,DSTRAN,KINC,KSTEP,NOEL,DFGRD0,DFGRD1,
      2   PNEWDT)
 
@@ -180,19 +182,19 @@
          END IF
 
          ! State variables at previous time step
-         CALL voit2mat(STATEV(1:9), F_vp_n(:,:))
-         CALL voit2mat(STATEV(10:18), E_ve_n(:,:))
+! ALL voit2mat(STATEV(1:9), F_vp_n(:,:))
+! ALL voit2mat(STATEV(10:18), E_ve_n(:,:))
          gma_n = STATEV(19)
          gma_0 = gma_n
-         CALL voit2mat(STATEV(20:28), b_n(:,:))
-         CALL voit2mat(STATEV(29:37), AA_n(1,:,:))
-         CALL voit2mat(STATEV(38:46), AA_n(2,:,:))
-         CALL voit2mat(STATEV(47:55), AA_n(3,:,:))
-         CALL voit2mat(STATEV(56:64), AA_n(4,:,:))
-         CALL voit2mat(STATEV(65:73), AA_n(5,:,:))
-         CALL voit2mat(STATEV(74:82), AA_n(6,:,:))
-         CALL voit2mat(STATEV(83:91), AA_n(7,:,:))
-         CALL voit2mat(STATEV(92:100), AA_n(8,:,:))
+! ALL voit2mat(STATEV(20:28), b_n(:,:))
+! ALL voit2mat(STATEV(29:37), AA_n(1,:,:))
+! ALL voit2mat(STATEV(38:46), AA_n(2,:,:))
+! ALL voit2mat(STATEV(47:55), AA_n(3,:,:))
+! ALL voit2mat(STATEV(56:64), AA_n(4,:,:))
+! ALL voit2mat(STATEV(65:73), AA_n(5,:,:))
+! ALL voit2mat(STATEV(74:82), AA_n(6,:,:))
+! ALL voit2mat(STATEV(83:91), AA_n(7,:,:))
+! ALL voit2mat(STATEV(92:100), AA_n(8,:,:))
 
          BB_n(1) = STATEV(101)
          BB_n(2) = STATEV(102)
@@ -259,20 +261,20 @@
          g(8)          =PROPS(50)
 
          ! Compute determinant of F (Deformation Gradient)
-         CALL determinant(DFGRD1(:,:), J)
+! ALL determinant(DFGRD1(:,:), J)
         ! Calculate VE Right Cauchy Green Tensor (C_ve) at trial State
-         CALL vevpSplit(DFGRD1(:, :), F_vp_n(:, :),
+! ALL vevpSplit(DFGRD1(:, :), F_vp_n(:, :),
      1                  F_ve_tr(:, :), C_ve_tr(:, :))
 
          ! Approximate VE log Strain (power series) at trial state 
          D_ve_tr(:,:) = C_ve_tr(:, :) - I_mat(:,:)
-         CALL approx_log(D_ve_tr(:,:), order, E_ve_tr(:, :),
+! ALL approx_log(D_ve_tr(:,:), order, E_ve_tr(:, :),
      1               dlogC_ve_tr(:,:,:,:))
          E_ve_tr(:, :) = 0.5D0 * E_ve_tr(:, :)
 
          ! Calculate the corotated kirchoff stress at trial state along 
          ! with VE internal variables
-         CALL vePredictor_log(E_ve_tr(:,:), E_ve_n(:,:), AA_n(:,:,:),
+! ALL vePredictor_log(E_ve_tr(:,:), E_ve_n(:,:), AA_n(:,:,:),
      1             BB_n(:), DTIME, PROPS, NPROPS, AA_tr(:,:,:),
      2             BB_tr(:), GGe, KKe, kappa_tr(:,:))
 
@@ -280,10 +282,10 @@
          ! Get phi_e_tr, phi_p_tr
          phi_tr(:, :) = kappa_tr(:,:) - b_n(:,:)
              
-         CALL tr_dev_split(phi_tr(:,:), dev_phi_tr(:,:), tr_phi_tr)
+! ALL tr_dev_split(phi_tr(:,:), dev_phi_tr(:,:), tr_phi_tr)
          phi_p_tr = tr_phi_tr / 3.D0
     
-         CALL mat2ddot(dev_phi_tr(:, :), dev_phi_tr(:, :), phi_e_tr)
+! ALL mat2ddot(dev_phi_tr(:, :), dev_phi_tr(:, :), phi_e_tr)
          phi_e_tr = (3.D0 / 2.D0) * phi_e_tr
          phi_e_tr = SQRT(phi_e_tr)
     
@@ -291,42 +293,42 @@
          PhiEq = phi_e_tr
     
          ! Update hardening variables on trial state
-         CALL hardn(PROPS, NPROPS, gma_0, gma_n, sigma_c, sigma_t,
+! ALL hardn(PROPS, NPROPS, gma_0, gma_n, sigma_c, sigma_t,
      1     HHc, HHt, HHb)
          ! Update Drucker Pragger coefficients along with ecc factor m
-         CALL DPcoeff(alpha, sigma_c, sigma_t, m, a0, a1, a2)
+! ALL DPcoeff(alpha, sigma_c, sigma_t, m, a0, a1, a2)
          
          F_tr = a2 * PhiEq**alpha  - a1 * ptilde - a0
 
           ! Numeric tangent
-          CALL perturb_F(DFGRD1(:, :), TOLL, F_hat(:, :, :))
+! ALL perturb_F(DFGRD1(:, :), TOLL, F_hat(:, :, :))
           DO O6 = 1, 6
 
-            CALL vevpSplit(F_hat(O6, :, :), F_vp_n(:, :),
+! ALL vevpSplit(F_hat(O6, :, :), F_vp_n(:, :),
      1                  F_ve_tr_hat(O6, :, :), C_ve_tr_hat(O6, :, :))
 
             ! Approximate VE log Strain at trial state 
             D_ve_tr_hat(O6, :,:) = C_ve_tr_hat(O6, :, :) - I_mat(:,:)
-            CALL approx_log(D_ve_tr_hat(O6, :,:), order,
+! ALL approx_log(D_ve_tr_hat(O6, :,:), order,
      1        E_ve_tr_hat(O6, :, :), dlogC_ve_tr_hat(O6,:,:,:,:))
             E_ve_tr_hat(O6,:, :) = 0.5D0 * E_ve_tr_hat(O6, :, :)
 
             ! Calculate the corotated kirchoff stress at trial state
             ! along with VE internal variables
-            CALL vePredictor_log(E_ve_tr_hat(O6, :,:), E_ve_n(:,:),
+! ALL vePredictor_log(E_ve_tr_hat(O6, :,:), E_ve_n(:,:),
      1        AA_n(:,:,:), BB_n(:), DTIME, PROPS, NPROPS,
      2        AA_tr_hat(O6, :,:,:),
      3        BB_tr_hat(O6, :), GGe_hat(O6), KKe_hat(O6),
      4        kappa_tr_hat(O6, :,:)) 
 
             ! Calculate 2Pk as per paper
-            CALL mat24ddot(kappa_tr_hat(O6, :, :),
+! ALL mat24ddot(kappa_tr_hat(O6, :, :),
      1        dlogC_ve_tr_hat(O6, :, :, :, :), S_tr_hat(O6, :, :))
 
             ! Calculate kirchoff stress
-            CALL mat2dot(F_ve_tr_hat(O6, :, :), S_tr_hat(O6, :, :),
+! ALL mat2dot(F_ve_tr_hat(O6, :, :), S_tr_hat(O6, :, :),
      1                    temp1_hat(O6, :, :))
-            CALL mat2dotT(temp1_hat(O6, :, :), F_ve_tr_hat(O6, :, :),
+! ALL mat2dotT(temp1_hat(O6, :, :), F_ve_tr_hat(O6, :, :),
      1                    tau_tr_hat(O6, :, :))
           
           END DO
@@ -335,12 +337,12 @@
          IF(F_tr .LE. TOLL_G) THEN
          
           ! Calculate 2Pk as per paper
-          CALL mat24ddot(kappa_tr(:, :), dlogC_ve_tr(:, :, :, :),
+! ALL mat24ddot(kappa_tr(:, :), dlogC_ve_tr(:, :, :, :),
      1                  S_tr(:, :))
 
           ! Calculate kirchoff stress
-          CALL mat2dot(F_ve_tr(:, :), S_tr(:, :), temp1(:, :))
-          CALL mat2dotT(temp1(:, :), F_ve_tr(:, :), tau_tr(:, :))
+! ALL mat2dot(F_ve_tr(:, :), S_tr(:, :), temp1(:, :))
+! ALL mat2dotT(temp1(:, :), F_ve_tr(:, :), tau_tr(:, :))
 
           ! Return cauchy stress for abaqus
           STRESS(1) = (1.D0 / J) * tau_tr(1, 1)
@@ -351,16 +353,16 @@
           STRESS(6) = (1.D0 / J) * tau_tr(2, 3)
 
           ! Update internal variables for trial state. No need to update VP internal variables
-          CALL mat2voit(E_ve_tr(:,:),STATEV(10:18))
+! ALL mat2voit(E_ve_tr(:,:),STATEV(10:18))
 
-          CALL mat2voit(AA_tr(1,:,:),STATEV(29:37))
-          CALL mat2voit(AA_tr(2,:,:),STATEV(38:46))
-          CALL mat2voit(AA_tr(3,:,:),STATEV(47:55))
-          CALL mat2voit(AA_tr(4,:,:),STATEV(56:64))
-          CALL mat2voit(AA_tr(5,:,:),STATEV(65:73))
-          CALL mat2voit(AA_tr(6,:,:),STATEV(74:82))
-          CALL mat2voit(AA_tr(7,:,:),STATEV(83:91))
-          CALL mat2voit(AA_tr(8,:,:),STATEV(92:100))
+! ALL mat2voit(AA_tr(1,:,:),STATEV(29:37))
+! ALL mat2voit(AA_tr(2,:,:),STATEV(38:46))
+! ALL mat2voit(AA_tr(3,:,:),STATEV(47:55))
+! ALL mat2voit(AA_tr(4,:,:),STATEV(56:64))
+! ALL mat2voit(AA_tr(5,:,:),STATEV(65:73))
+! ALL mat2voit(AA_tr(6,:,:),STATEV(74:82))
+! ALL mat2voit(AA_tr(7,:,:),STATEV(83:91))
+! ALL mat2voit(AA_tr(8,:,:),STATEV(92:100))
 
           STATEV(101)=BB_tr(1)
           STATEV(102)=BB_tr(2)
@@ -394,7 +396,7 @@
         ! In case the yield surface is breached at trail state, corrector steps are needed
         ELSE
           ! Use Newton Raphson scheme to get GAMMA, gma and related variables
-          CALL nlinSolver(PROPS, NPROPS, DTIME, TOLL_G, MAX_i,
+! ALL nlinSolver(PROPS, NPROPS, DTIME, TOLL_G, MAX_i,
      1      GGe, KKe,
      2      F_tr, gma_0, gma_n, ptilde, PhiEq, 
      3      GAMMA, u, v, beta, k_plast)
@@ -409,30 +411,30 @@
           
           ! Make corrections to F_vp, F_ve and C_ve
           GQ(:,:) = GAMMA * Q(:,:)
-          CALL approx_exp(GQ(:,:), order, exp_GQ(:,:))
-          CALL mat2dot(exp_GQ(:,:), F_vp_n(:,:), F_vp(:,:))
-          CALL matInverse(F_vp(:,:), F_vp_inv(:,:))
-          CALL mat2dot(DFGRD1(:,:), F_vp_inv(:,:), F_ve(:, :))
-          CALL mat2Tdot(F_ve(:,:), F_ve(:,:), C_ve(:,:))
+! ALL approx_exp(GQ(:,:), order, exp_GQ(:,:))
+! ALL mat2dot(exp_GQ(:,:), F_vp_n(:,:), F_vp(:,:))
+! ALL matInverse(F_vp(:,:), F_vp_inv(:,:))
+! ALL mat2dot(DFGRD1(:,:), F_vp_inv(:,:), F_ve(:, :))
+! ALL mat2Tdot(F_ve(:,:), F_ve(:,:), C_ve(:,:))
 
           ! Approximate VE log Strain (power series) at the corrected state
           D_ve(:,:) = C_ve(:, :) - I_mat(:,:)
-          CALL approx_log(D_ve(:,:), order, E_ve(:, :),
+! ALL approx_log(D_ve(:,:), order, E_ve(:, :),
      1                     dlogC_ve(:,:,:,:))
           E_ve(:, :) = 0.5D0 * E_ve(:, :)
 
           ! Calculate the corotated kirchoff stress at corrected state along 
           ! with VE internal variables. Note : I know i am calculating the stresses again, whereas
           ! I just need to correct the VE internal variables, it doesnt affect performance alot. 
-          CALL vePredictor_log(E_ve(:,:), E_ve_n(:,:), AA_n(:,:,:),
+! ALL vePredictor_log(E_ve(:,:), E_ve_n(:,:), AA_n(:,:,:),
      1             BB_n(:), DTIME, PROPS, NPROPS, AA(:,:,:), BB(:),
      2             GGe, KKe, kappa(:,:))
 
           ! Calculate 2PK stress at corrected state
-          CALL mat24ddot(kappa(:, :), dlogC_ve(:, :, :, :), S(:, :))
+! ALL mat24ddot(kappa(:, :), dlogC_ve(:, :, :, :), S(:, :))
           ! Calculate kirchoff stress at corrected state
-          CALL mat2dot(F_ve(:, :), S(:, :), temp2(:, :))
-          CALL mat2dotT(temp2(:, :), F_ve(:, :), tau(:, :))
+! ALL mat2dot(F_ve(:, :), S(:, :), temp2(:, :))
+! ALL mat2dotT(temp2(:, :), F_ve(:, :), tau(:, :))
 
           ! Return cauchy stress for abaqus
           STRESS(1) = (1.D0 / J) * tau(1, 1)
@@ -443,25 +445,25 @@
           STRESS(6) = (1.D0 / J) * tau(2, 3)
 
           ! Update kin hardening variable for the corrected state
-          CALL hardn(PROPS, NPROPS, gma_0, gma_n, 
+! ALL hardn(PROPS, NPROPS, gma_0, gma_n, 
      1                 sigma_c, sigma_t, HHc, HHt, HHb)
 
           b(:,:) = b_n(:,:) + k_plast*HHb * GQ(:,:)
 
           ! Return updated internal variables
-          CALL mat2voit(F_vp(:,:),STATEV(1:9))
-          CALL mat2voit(E_ve(:,:),STATEV(10:18))
+! ALL mat2voit(F_vp(:,:),STATEV(1:9))
+! ALL mat2voit(E_ve(:,:),STATEV(10:18))
           STATEV(19) = gma_n
-          CALL mat2voit(b(:,:),STATEV(20:28))
+! ALL mat2voit(b(:,:),STATEV(20:28))
 
-          CALL mat2voit(AA(1,:,:),STATEV(29:37))
-          CALL mat2voit(AA(2,:,:),STATEV(38:46))
-          CALL mat2voit(AA(3,:,:),STATEV(47:55))
-          CALL mat2voit(AA(4,:,:),STATEV(56:64))
-          CALL mat2voit(AA(5,:,:),STATEV(65:73))
-          CALL mat2voit(AA(6,:,:),STATEV(74:82))
-          CALL mat2voit(AA(7,:,:),STATEV(83:91))
-          CALL mat2voit(AA(8,:,:),STATEV(92:100))
+! ALL mat2voit(AA(1,:,:),STATEV(29:37))
+! ALL mat2voit(AA(2,:,:),STATEV(38:46))
+! ALL mat2voit(AA(3,:,:),STATEV(47:55))
+! ALL mat2voit(AA(4,:,:),STATEV(56:64))
+! ALL mat2voit(AA(5,:,:),STATEV(65:73))
+! ALL mat2voit(AA(6,:,:),STATEV(74:82))
+! ALL mat2voit(AA(7,:,:),STATEV(83:91))
+! ALL mat2voit(AA(8,:,:),STATEV(92:100))
 
           STATEV(101)=BB(1)
           STATEV(102)=BB(2)
@@ -480,11 +482,11 @@
           ! Get phi_e_tr, phi_p_tr
           phi_tr_hat(O6, :, :) = kappa_tr_hat(O6, :,:) - b_n(:,:)
              
-          CALL tr_dev_split(phi_tr_hat(O6, :,:),
+! ALL tr_dev_split(phi_tr_hat(O6, :,:),
      1         dev_phi_tr_hat(O6, :,:), tr_phi_tr_hat(O6))
           phi_p_tr_hat(O6) = tr_phi_tr_hat(O6) / 3.D0
     
-          CALL mat2ddot(dev_phi_tr_hat(O6, :, :),
+! ALL mat2ddot(dev_phi_tr_hat(O6, :, :),
      1             dev_phi_tr_hat(O6, :, :), phi_e_tr_hat(O6))
           phi_e_tr_hat(O6) = (3.D0 / 2.D0) * phi_e_tr_hat(O6)
           phi_e_tr_hat(O6) = SQRT(phi_e_tr_hat(O6))
@@ -493,18 +495,18 @@
           PhiEq_hat(O6) = phi_e_tr_hat(O6)
     
           ! Update hardening variables on purturb state
-          CALL hardn(PROPS, NPROPS, gma_0, gma_n_hat(O6), 
+! ALL hardn(PROPS, NPROPS, gma_0, gma_n_hat(O6), 
      1      sigma_c_hat(O6), sigma_t_hat(O6), HHc_hat(O6), 
      2      HHt_hat(O6), HHb_hat(O6))
           ! Update Drucker Pragger coefficients along with ecc factor m
-          CALL DPcoeff(alpha, sigma_c_hat(O6), sigma_t_hat(O6),
+! ALL DPcoeff(alpha, sigma_c_hat(O6), sigma_t_hat(O6),
      1        m_hat(O6), a0_hat(O6), a1_hat(O6), a2_hat(O6))
           ! Calculate yield func at purturbed state
           F_tr_hat(O6) = a2_hat(O6) * PhiEq_hat(O6)**alpha 
      1        - a1_hat(O6) * ptilde_hat(O6) - a0_hat(O6)
 
           ! Solve Newton raphson to get gma and GAMMA at purturbed state
-          CALL nlinSolver(PROPS, NPROPS, DTIME, TOLL_G, MAX_i,
+! ALL nlinSolver(PROPS, NPROPS, DTIME, TOLL_G, MAX_i,
      1      GGe, KKe,
      2      F_tr_hat(O6), gma_0, gma_n_hat(O6), ptilde_hat(O6),
      3      PhiEq_hat(O6), GAMMA_hat(O6), u_hat(O6), v_hat(O6),
@@ -521,37 +523,37 @@
           
           ! Make corrections to F_vp_hat, F_ve_hat and C_ve_hat
           GQ_hat(O6,:,:) = GAMMA_hat(O6) * Q_hat(O6,:,:)
-          CALL approx_exp(GQ_hat(O6,:,:), order, exp_GQ_hat(O6,:,:))
-          CALL mat2dot(exp_GQ_hat(O6, :,:), F_vp_n(:,:),
+! ALL approx_exp(GQ_hat(O6,:,:), order, exp_GQ_hat(O6,:,:))
+! ALL mat2dot(exp_GQ_hat(O6, :,:), F_vp_n(:,:),
      1                  F_vp_hat(O6,:,:))
-          CALL matInverse(F_vp_hat(O6,:,:), F_vp_inv_hat(O6,:,:))
-          CALL mat2dot(F_hat(O6, :,:), F_vp_inv_hat(O6,:,:),
+! ALL matInverse(F_vp_hat(O6,:,:), F_vp_inv_hat(O6,:,:))
+! ALL mat2dot(F_hat(O6, :,:), F_vp_inv_hat(O6,:,:),
      1      F_ve_hat(O6, :, :))
-          CALL mat2Tdot(F_ve_hat(O6,:,:), F_ve_hat(O6,:,:),
+! ALL mat2Tdot(F_ve_hat(O6,:,:), F_ve_hat(O6,:,:),
      1                  C_ve_hat(O6,:,:))
 
 
           ! Approximate VE log Strain (power series) at the purturbated state
           D_ve_hat(O6,:,:) = C_ve_hat(O6,:, :) - I_mat(:,:)
-          CALL approx_log(D_ve_hat(O6,:,:), order, E_ve_hat(O6,:, :),
+! ALL approx_log(D_ve_hat(O6,:,:), order, E_ve_hat(O6,:, :),
      1                     dlogC_ve_hat(O6,:,:,:,:))
           E_ve_hat(O6,:, :) = 0.5D0 * E_ve_hat(O6,:, :)
 
           ! Calculate the corotated kirchoff stress at purturbed state along 
           ! with VE internal variables
-          CALL vePredictor_log(E_ve_hat(O6,:,:), E_ve_n(:,:),
+! ALL vePredictor_log(E_ve_hat(O6,:,:), E_ve_n(:,:),
      1      AA_n(:,:,:), BB_n(:), DTIME, PROPS, NPROPS,
      2      AA_hat(O6,:,:,:),
      3      BB_hat(O6,:), GGe, KKe, kappa_hat(O6,:,:))
 
           ! Calculate 2PK stress at  purturbed state
-          CALL mat24ddot(kappa_hat(O6,:, :),
+! ALL mat24ddot(kappa_hat(O6,:, :),
      1      dlogC_ve_hat(O6,:, :, :, :), S_hat(O6,:, :))
 
           ! Calculate kirchoff stress at purturbed state
-          CALL mat2dot(F_ve_hat(O6,:, :), S_hat(O6,:, :),
+! ALL mat2dot(F_ve_hat(O6,:, :), S_hat(O6,:, :),
      1      temp2_hat(O6,:, :))
-          CALL mat2dotT(temp2_hat(O6,:, :), F_ve_hat(O6,:, :),
+! ALL mat2dotT(temp2_hat(O6,:, :), F_ve_hat(O6,:, :),
      1      tau_hat(O6,:, :))
 
           END DO
@@ -580,11 +582,12 @@
           RETURN
        END SUBROUTINE VEVP
 
-     !--------------------------------------------------------------
-     !   UMAT SUBROUTINE FOR ISOTROPIC NEO HOOKIAN MATERIAL MODEL
-     !--------------------------------------------------------------
+! !--------------------------------------------------------------
+! !   UMAT SUBROUTINE FOR ISOTROPIC NEO HOOKIAN MATERIAL MODEL
+! !--------------------------------------------------------------
 
       SUBROUTINE NEOHOOK(STRESS,STATEV,DDSDDE,STRAN,NTENS,NSTATV,
+      implicit none
      1   PROPS,NPROPS,DTIME,DSTRAN,KINC,KSTEP,NOEL,DFGRD0,DFGRD1)
 
 
@@ -627,10 +630,10 @@
         cnu=PROPS(2)
 
         !Calculate determinant of deformation gradient
-        CALL determinant(DFGRD1(:,:), J)
+! ALL determinant(DFGRD1(:,:), J)
 
         !Calculate inverse of deformation gradient
-        CALL matInverse(DFGRD1(:,:), F_inv(:, :))
+! ALL matInverse(DFGRD1(:,:), F_inv(:, :))
 
         !Calculate finger tensor B
         B(:) = ZERO
@@ -698,6 +701,7 @@
       !--------------------------------------------------------------
 
       SUBROUTINE voit2mat(voit, mat)
+      implicit none
         IMPLICIT NONE
                 
         INTEGER, PARAMETER :: double=kind(1.d0)
@@ -723,6 +727,7 @@
       !--------------------------------------------------------------
 
       SUBROUTINE mat2voit(mat, voit)
+      implicit none
         IMPLICIT NONE
                 
         INTEGER, PARAMETER :: double=kind(1.d0)
@@ -747,6 +752,7 @@
       !     Helper function to compute Determinant of 3x3 matrix 
       !--------------------------------------------------------------
       SUBROUTINE determinant(matrix, det)
+      implicit none
         IMPLICIT NONE
                 
         INTEGER, PARAMETER :: double=kind(1.d0)
@@ -767,6 +773,7 @@
       !      Helper function to compute inverse of 3x3 matrix
       !--------------------------------------------------------------
       SUBROUTINE matInverse(matrix, inv)
+      implicit none
         IMPLICIT NONE
         
         INTEGER, PARAMETER :: double=kind(1.d0)
@@ -786,7 +793,7 @@
         inv(3,2) = matrix(3,1)*matrix(1,2) - matrix(1,1)*matrix(3,2)
         inv(3,3) = matrix(1,1)*matrix(2,2) - matrix(2,1)*matrix(1,2)
         
-        CALL determinant(matrix, J)
+! ALL determinant(matrix, J)
 
         inv(:, :) = inv(:, :)/ J
 
@@ -800,6 +807,7 @@
       !------------------------------------------------------------
 
       SUBROUTINE mat2dot(a, b, c)
+      implicit none
         IMPLICIT NONE
         INTEGER, PARAMETER :: double=kind(1.d0)
         INTEGER, PARAMETER :: prec=double
@@ -827,6 +835,7 @@
       !   (2nd order tensors, single contraction) 
       !------------------------------------------------------------
       SUBROUTINE mat2Tdot(a, b, c)
+      implicit none
         IMPLICIT NONE
         INTEGER, PARAMETER :: double=kind(1.d0)
         INTEGER, PARAMETER :: prec=double
@@ -854,6 +863,7 @@
       !   (2nd order tensors, single contraction) 
       !------------------------------------------------------------
       SUBROUTINE mat2dotT(a, b, c)
+      implicit none
         IMPLICIT NONE
         INTEGER, PARAMETER :: double=kind(1.d0)
         INTEGER, PARAMETER :: prec=double
@@ -881,6 +891,7 @@
       !   (2nd order tensors, double contraction) 
       !------------------------------------------------------------
       SUBROUTINE mat2ddot(a, b, c)
+      implicit none
         IMPLICIT NONE
         INTEGER, PARAMETER :: double=kind(1.d0)
         INTEGER, PARAMETER :: prec=double
@@ -904,6 +915,7 @@
       !     Helper function for 2nd order 4th order contraction
       !--------------------------------------------------------------
       SUBROUTINE mat24ddot(a, b, c)
+      implicit none
         IMPLICIT NONE
         INTEGER, PARAMETER :: double=kind(1.d0)
         INTEGER, PARAMETER :: prec=double
@@ -931,6 +943,7 @@
       !     Helper function to get additive dev trace split  
       !--------------------------------------------------------------
       SUBROUTINE tr_dev_split(matrix, dev, tr)
+      implicit none
         IMPLICIT NONE
 
         INTEGER, PARAMETER :: double=kind(1.d0)
@@ -955,6 +968,7 @@
       !     Helper function to get VEVP Multiplicative Split
       !--------------------------------------------------------------
       SUBROUTINE vevpSplit(F, F_vp, F_ve, C_ve)
+      implicit none
 
         IMPLICIT NONE
         INTEGER, PARAMETER :: double=kind(1.d0)
@@ -966,20 +980,21 @@
 
 
         ! Compute inverse of int variable F_vp
-        CALL matInverse(F_vp(:, :), F_vp_inv(:, :))
+! ALL matInverse(F_vp(:, :), F_vp_inv(:, :))
 
         ! Compute F_ve
-        CALL mat2dot(F(:, :), F_vp_inv(:, :), F_ve(:, :))
+! ALL mat2dot(F(:, :), F_vp_inv(:, :), F_ve(:, :))
 
         ! Compute C_ve
-        CALL mat2Tdot(F_ve(:, :), F_ve(:, :), C_ve(:, :))
+! ALL mat2Tdot(F_ve(:, :), F_ve(:, :), C_ve(:, :))
       END SUBROUTINE vevpSplit
 
-      !--------------------------------------------------------------
+       !--------------------------------------------------------------
       !      Function to compute perturb of matrix
       !--------------------------------------------------------------
 
       SUBROUTINE perturb_F(F, TOLL, F_hat)
+      implicit none
         IMPLICIT NONE
 
         INTEGER, PARAMETER :: double=kind(1.d0)
@@ -1053,6 +1068,7 @@
       !--------------------------------------------------------------
 
       SUBROUTINE approx_log(AA, order, logAA, dlogAA)!, ddlogAA)
+      implicit none
         IMPLICIT NONE
         INTEGER, PARAMETER :: double=kind(1.d0)
         INTEGER, PARAMETER :: prec=double
@@ -1165,6 +1181,7 @@
       !--------------------------------------------------------------
 
       SUBROUTINE approx_exp(Q, order, expQ)
+      implicit none
         IMPLICIT NONE
         INTEGER, PARAMETER :: double=kind(1.d0)
         INTEGER, PARAMETER :: prec=double
@@ -1219,6 +1236,7 @@
       !--------------------------------------------------------------
 
       SUBROUTINE vePredictor_log(E_ve, E_ve_n, AA_n, BB_n,
+      implicit none
      1    dt, PROPS, NPROPS, AA, BB, GGe, KKe, kappa)
 
          IMPLICIT NONE
@@ -1283,10 +1301,10 @@
         g(7)          =PROPS(49)
         g(8)          =PROPS(50)
         
-        CALL tr_dev_split(E_ve(:,:), dev_E_ve(:,:), tr_E_ve)
+! ALL tr_dev_split(E_ve(:,:), dev_E_ve(:,:), tr_E_ve)
         
         DE_ve(:, :) = E_ve(:, :) - E_ve_n(:, :)
-        CALL tr_dev_split(DE_ve(:,:), dev_DE_ve(:,:), tr_DE_ve)
+! ALL tr_dev_split(DE_ve(:,:), dev_DE_ve(:,:), tr_DE_ve)
 
          GGe = GG_inf
          AA(:,:,:)=0.D0
@@ -1333,6 +1351,7 @@
          !--------------------------------------------------------------
 
         SUBROUTINE hardn(PROPS, NPROPS, gma_0, gma, 
+      implicit none
      1                   sigma_c, sigma_t, HHc, HHt, HHb)
           IMPLICIT NONE
           INTEGER, PARAMETER :: double=kind(1.d0)
@@ -1374,6 +1393,7 @@
         !      Drucker - Prager coefficient update subroutine
         !--------------------------------------------------------------
         SUBROUTINE DPcoeff(alpha, sigma_c, sigma_t, m, a0, a1, a2)
+      implicit none
           IMPLICIT NONE
           INTEGER, PARAMETER :: double=kind(1.D0)
           INTEGER, PARAMETER :: prec=double
@@ -1402,6 +1422,7 @@
         !--------------------------------------------------------------
 
         SUBROUTINE nlinSolver(PROPS, NPROPS, DTIME, TOLL, MAX_i,
+      implicit none
      1      GGe, KKe, F, gma_0, gma,
      2      ptilde, PhiEq,  GAMMA, u, v, beta, k_plast)
 
@@ -1454,10 +1475,10 @@
           gma_i = gma
           
           ! Update hardening variables on trial state
-          CALL hardn(PROPS, NPROPS, gma_0, gma_i, sigma_c, sigma_t,
+! ALL hardn(PROPS, NPROPS, gma_0, gma_i, sigma_c, sigma_t,
      1               HHc, HHt, HHb)
           ! Update Drucker Pragger coefficients along with ecc factor m
-          CALL DPcoeff(alpha, sigma_c, sigma_t, m, a0, a1, a2)
+! ALL DPcoeff(alpha, sigma_c, sigma_t, m, a0, a1, a2)
 
           GG_til = GGe + (k_plast/2.D0)*HHb
           KK_til = KKe + (k_plast/3.D0)*HHb
@@ -1523,10 +1544,10 @@
             gma_i = gma + Dgma
 
             ! Update hardening variables on gma_i
-            CALL hardn(PROPS, NPROPS, gma_0, gma_i, sigma_c,
+! ALL hardn(PROPS, NPROPS, gma_0, gma_i, sigma_c,
      1        sigma_t, HHc, HHt, HHb)
             ! Update Drucker Pragger coefficients along with ecc factor m
-            CALL DPcoeff(alpha, sigma_c, sigma_t, m, a0, a1, a2)
+! ALL DPcoeff(alpha, sigma_c, sigma_t, m, a0, a1, a2)
 
             GG_til = GGe + (k_plast/2.D0)*HHb
             KK_til = KKe + (k_plast/3.D0)*HHb

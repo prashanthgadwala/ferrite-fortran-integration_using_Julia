@@ -1,37 +1,37 @@
-!     UMAT - Finite strain VEVP
-!     Based on Paper by V.-D.Nguyen et al. https://orbi.uliege.be/handle/2268/197898
+C     UMAT - Finite strain VEVP
+C     Based on Paper by V.-D.Nguyen et al. https://orbi.uliege.be/handle/2268/197898
 
-!     Total no of material parameters : 51 
-!     Total no of internal variables (STATEV) : 108
-!     
-!     Note: The UMAT is hard!oded for 8 Maxwell VE Bran!hes.
-!           If you feel the need for more branches send me an email
-!           I will add more.
-!
-!     Note: Tollerance and max iteration for the newton raphson solver are hard coded
-!           as variables TOLL_G and MAX_i respectively
-!
-!     Note : Computations are done in standard matrix notation and
-!            at the end changed to voit notation where needed for return to main 
-!           routine. I understand this isn't the most elegant way of 
-!            doing things but when dealing with tensors 
-!            with 4 or more dummy indices, I can code much 
-!            faster this way. If you know the algebra and have the 
-!            time to work in voit notation, change it and send me an 
-!            email.
-!
-!     Note : Consistent tangents are calculated numerically. 
-    !         Tollerance for numeric tangent is hardcoded as variable TOLL.
+C     Total no of material parameters : 51 
+C     Total no of internal variables (STATEV) : 108
+C     
+C     Note: The UMAT is hardcoded for 8 Maxwell VE Branches.
+C           If you feel the need for more branches send me an email
+C           I will add more.
+C
+C     Note: Tollerance and max iteration for the newton raphson solver are hard coded
+C           as variables TOLL_G and MAX_i respectively
+C
+C     Note : Computations are done in standard matrix notation and
+C            at the end changed to voit notation where needed for return to main 
+C            routine. I understand this isn't the most elegant way of 
+C            doing things but when dealing with tensors 
+C            with 4 or more dummy indices, I can code much 
+C            faster this way. If you know the algebra and have the 
+C            time to work in voit notation, change it and send me an 
+C            email.
+C
+C     Note : Consistent tangents are calculated numerically. 
+C            Tollerance for numeric tangent is hardcoded as variable TOLL.
 
-    !  Mohib Mustafa - First Version - IMDEA 15 March 2022
-    !  Mohib Mustafa - Added more VE Branches -  ULIEGE 10 Feburary 2023
-    !  mohibmustafa@gmail.com
+C     Mohib Mustafa - First Version - IMDEA 15 March 2022
+C     Mohib Mustafa - Added more VE Branches -  ULIEGE 10 Feburary 2023
+C     mohibmustafa@gmail.com
 
 
 
-     !--------------------------------------------------------------
-     !                     UMAT SUBROUTINE
-     !--------------------------------------------------------------
+C     !--------------------------------------------------------------
+C     !                     UMAT SUBROUTINE
+C     !--------------------------------------------------------------
 
       SUBROUTINE UMAT(STRESS,STATEV,DDSDDE,SSE,SPD,SCD,
      1           RPL,DDSDDT,DRPLDE,DRPLDT,
@@ -71,9 +71,9 @@
       end
 
 
-     !--------------------------------------------------------------
-     !                Finite Strain VEVP Subroutine
-     !--------------------------------------------------------------
+C     !--------------------------------------------------------------
+C     !                Finite Strain VEVP Subroutine
+C     !--------------------------------------------------------------
 
       SUBROUTINE VEVP(STRESS,STATEV,DDSDDE,STRAN,NTENS,NSTATV,
      1   PROPS,NPROPS,DTIME,DSTRAN,KINC,KSTEP,NOEL,DFGRD0,DFGRD1,
@@ -580,118 +580,6 @@
           RETURN
        END SUBROUTINE VEVP
 
-     !--------------------------------------------------------------
-     !   UMAT SUBROUTINE FOR ISOTROPIC NEO HOOKIAN MATERIAL MODEL
-     !--------------------------------------------------------------
-
-      SUBROUTINE NEOHOOK(STRESS,STATEV,DDSDDE,STRAN,NTENS,NSTATV,
-     1   PROPS,NPROPS,DTIME,DSTRAN,KINC,KSTEP,NOEL,DFGRD0,DFGRD1)
-
-
-        IMPLICIT NONE
-
-        INTEGER, PARAMETER :: double=kind(1.d0)
-        INTEGER, PARAMETER :: prec=double
-       
-        INTEGER, INTENT(IN)      :: ntens,nprops,nstatv
-        INTEGER, INTENT(IN)      :: kinc,kstep,noel
-        REAL(prec), INTENT(IN)   :: stran(ntens), dstran(ntens)
-        REAL(prec), INTENT(IN)   :: props(nprops), dtime
-        REAL(prec), INTENT(IN)   :: DFGRD0(3,3), DFGRD1(3,3)
-        REAL(prec), INTENT(INOUT) :: statev(nstatv)
-        REAL(prec), INTENT(OUT)   :: stress(ntens)
-        REAL(prec), INTENT(OUT)   :: ddsdde(ntens,ntens)
-
-        !List of internal variables
-        INTEGER    :: ii, jj, mm, K1, ll, m2v(3, 3)
-        REAL(prec) :: I(6), B(6), B_bar(6), dev_B_bar(6)
-        REAL(prec) :: F_inv(3, 3)
-        REAL(prec) :: J, I_bar, fac1, fac2, fac3, fac4, cE, cnu
-        
-        !Decleration of constants
-        REAL(prec), PARAMETER :: ZERO=0.D0, ONE=1.D0, TWO=2.D0
-        REAL(prec), PARAMETER :: THREE=3.D0, FOUR= 4.D0, SIX=6.D0
-        REAL(prec), PARAMETER :: NINE=9.D0
-
-
-        !Declare matrix to voit mapping
-        data m2v/ 1, 4, 5,
-     1            4, 2, 6,
-     2            5, 6, 3/
-
-        !2nd Order Identity
-        data I/ ONE, ONE, ONE, ZERO, ZERO, ZERO/
-                   
-        !Get material properties
-        cE=PROPS(1)
-        cnu=PROPS(2)
-
-        !Calculate determinant of deformation gradient
-        CALL determinant(DFGRD1(:,:), J)
-
-        !Calculate inverse of deformation gradient
-        CALL matInverse(DFGRD1(:,:), F_inv(:, :))
-
-        !Calculate finger tensor B
-        B(:) = ZERO
-        DO K1 = 1, 3
-          DO ii = 1, 3
-            DO jj = 1, 3
-              IF (ii .EQ. jj) THEN
-                B(m2v(ii, jj)) = B(m2v(ii, jj)) +  DFGRD1(ii, K1) 
-     1                         * DFGRD1(jj, K1)
-              ELSE
-                B(m2v(ii, jj)) = B(m2v(ii, jj)) + 0.5d0 
-     1                         * DFGRD1(ii, K1) * DFGRD1(jj, K1)
-              END IF
-            END DO
-         END DO
-        END DO
-
-        B_bar(:) = B(:) *  J ** (-TWO / THREE)
-        I_bar = B_bar(1) + B_bar(2) + B_bar(3)
-        dev_B_bar(:) = B_bar(:) - (ONE / THREE) * I_bar * I(:)
-
-        !Return Cauchy stress to Abaqus
-        STRESS(:) = 2 * cE * (J - ONE) * J * I(:)
-     1          + 2 * cnu * dev_B_bar(:)
-
-        !Algorithmic constants for the Tangent
-        fac1 = -(FOUR / THREE) * cnu * J ** (-ONE)
-        fac2 = -(TWO * cE * (J - ONE) * J 
-     1       - (TWO/THREE) * cnu * I_bar) * J ** (-ONE)
-        fac3 =  (TWO * cE * (J - ONE) * J 
-     1       + (FOUR / NINE) * cnu * I_bar + TWO * cE * J ** TWO) 
-     2       * J ** (-ONE)
-        fac4 = TWO * cnu * J ** (-ONE)
-
-        !Tangent for ABAQUS
-        DDSDDE(:,:) = ZERO
-        DO ii = 1, 3
-          DO jj = 1, 3
-            DO ll = 1, 3
-              DO mm = 1, 3
-                DDSDDE(m2v(ii, jj), m2v(ll, mm)) = 
-     1            DDSDDE(m2v(ii, jj), m2v(ll, mm))
-     2            + fac1 * (B_bar(m2v(ii, jj)) * I(m2v(ll, mm)) 
-     3            + I(m2v(ii, jj)) * B_bar(m2v(ll, mm)))
-     4            + (fac4 - TWO * cnu * J**(-ONE)) 
-     5            * B_bar(m2v(ii, ll)) * I(m2v(jj, mm))
-     6            + TWO * cnu * (dev_B_bar(m2v(ii, ll)) 
-     7            * I(m2v(jj, mm)) 
-     8            + I(m2v(ii, ll)) * dev_B_bar(m2v(jj, mm)))
-     9            + fac2 * I(m2v(ii, mm)) * I(m2v(ll, jj))
-     1            + fac3 * I(m2v(ii, jj)) * I(m2v(ll, mm))
-     2            + (fac2 + FOUR * cE * (J - ONE)) 
-     3            * I(m2v(ii, ll)) * I(m2v(jj, mm))
-              END DO
-            END DO
-          END DO
-        END DO
-
-
-      RETURN
-      END SUBROUTINE NEOHOOK
 
       !--------------------------------------------------------------
       !     Helper function to convert a voit array to matrix 
@@ -975,7 +863,7 @@
         CALL mat2Tdot(F_ve(:, :), F_ve(:, :), C_ve(:, :))
       END SUBROUTINE vevpSplit
 
-      !--------------------------------------------------------------
+       !--------------------------------------------------------------
       !      Function to compute perturb of matrix
       !--------------------------------------------------------------
 
