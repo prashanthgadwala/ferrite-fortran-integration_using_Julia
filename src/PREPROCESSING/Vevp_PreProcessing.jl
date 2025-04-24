@@ -26,6 +26,24 @@ end
 
 """
 
+function doassemble_neumann!(r, dh, facetset, facetvalues, t)
+    n_basefuncs = getnbasefunctions(facetvalues)
+    re = zeros(n_basefuncs)                      # element residual vector
+    for fc in FacetIterator(dh, facetset)
+        # Add traction as a negative contribution to the element residual `re`:
+        reinit!(facetvalues, fc)
+        fill!(re, 0)
+        for q_point in 1:getnquadpoints(facetvalues)
+            dΓ = getdetJdV(facetvalues, q_point)
+            for i in 1:n_basefuncs
+                δu = shape_value(facetvalues, q_point, i)
+                re[i] -= (δu ⋅ t) * dΓ
+            end
+        end
+        assemble!(r, celldofs(fc), re)
+    end
+    return r
+end
 
 struct MaterialState{T, S <: SecondOrderTensor{3, T}}
     ϵᵖ::S # plastic strain

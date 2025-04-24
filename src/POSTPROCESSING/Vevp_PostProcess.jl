@@ -5,14 +5,17 @@ function vonMises(σ)
     return sqrt(3.0 / 2.0 * s ⊡ s)
 end
 
-function postprocess(grid, dh, states, material, u, filename="plasticity")
+function postprocess(grid, dh, states, props, u, filename="plasticity")
+    # Extract material properties from PROPS
+    H = props[5] # Hardening modulus
+
     # Compute von Mises stress and drag stress
     mises_values = zeros(getncells(grid))
     κ_values = zeros(getncells(grid))
     for (el, cell_states) in enumerate(eachcol(states))
         for state in cell_states
             mises_values[el] += vonMises(state.σ)
-            κ_values[el] += state.k * material.H
+            κ_values[el] += state.k * H
         end
         mises_values[el] /= length(cell_states) # Average von Mises stress
         κ_values[el] /= length(cell_states)     # Average drag stress

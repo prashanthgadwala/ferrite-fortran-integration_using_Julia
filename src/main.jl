@@ -13,7 +13,7 @@ function call_umat(stress, statev, ddsdde, sse, spd, scd, rpl, ddsddt, drplde, d
     fill!(cmname, 0)                 # Fill with null bytes
     copyto!(cmname, cmname_str)      # Copy the string into the buffer
 
-    ccall((:UMAT, joinpath(@__DIR__, "PREPROCESSING", "Material_Models", "libumat.so")), Cvoid,
+    ccall((:umat_, joinpath(@__DIR__, "PREPROCESSING", "Material_Models", "libumat.so")), Cvoid,
           (Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64},
            Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64},
            Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64},
@@ -138,7 +138,7 @@ function solve()
     end
 
     # Postprocessing
-    postprocess(grid, dh, states, nothing, u)
+    postprocess(grid, dh, states, PROPS, u)
     plot_traction_displacement(u_max, traction_magnitude)
 end
 
