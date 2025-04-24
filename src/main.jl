@@ -3,10 +3,17 @@ include("./POSTPROCESSING/Vevp_PostProcess.jl")
 
 # Wrapper function to call the Fortran UMAT subroutine
 function call_umat(stress, statev, ddsdde, sse, spd, scd, rpl, ddsddt, drplde, drpldt,
-                   stran, dstran, time, dtime, temp, dtemp, predef, dpred, cmname,
+                   stran, dstran, time, dtime, temp, dtemp, predef, dpred, cmname_str,
                    ndi, nshr, ntens, nstatv, props, nprops, coords, drot, pnewdt,
                    celent, dfgrd0, dfgrd1, noel, npt, layer, kspt, kstep, kinc)
-    ccall((:UMAT, "./PREPROCESSING/Material_Models/libumat.so"), Cvoid,
+
+    
+                   # Prepare the CHARACTER*80 buffer
+    cmname = Vector{UInt8}(undef, 80) # Allocate 80 bytes
+    fill!(cmname, 0)                 # Fill with null bytes
+    copyto!(cmname, cmname_str)      # Copy the string into the buffer
+
+    ccall((:UMAT, joinpath(@__DIR__, "PREPROCESSING", "Material_Models", "libumat.so")), Cvoid,
           (Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64},
            Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64},
            Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64},
@@ -32,6 +39,7 @@ function solve()
         # Add other material properties as required by UMAT
     ]
     nprops = length(PROPS)
+
 
     # Geometry and mesh
     L = 10.0 # beam length [m]
@@ -75,13 +83,13 @@ function solve()
 
         for newton_itr in 1:10
             # Assemble stiffness matrix and residual vector
-            doassemble!(K, r, cellvalues, dh, material, u, states, states_old)
+            doassemble!(K, r, cellvalues, dh, PROPS, u, states, states_old)
 
             # Call Fortran UMAT for material computations
             for cell in 1:getncells(grid)
                 for qp in 1:nqp
                     # Extract required variables for UMAT
-                    stress = states[cell][qp].σ
+                    stress = states[qp, cell].σ
                     statev = zeros(108) # Example: adjust based on UMAT requirements
                     ddsdde = zeros(6, 6)
                     sse, spd, scd, rpl, ddsddt, drplde, drpldt = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
@@ -101,10 +109,14 @@ function solve()
                     noel, npt, layer, kspt, kstep, kinc = 1, 1, 1, 1, 1, timestep
 
                     # Call UMAT
-                    call_umat(stress, statev, ddsdde, sse, spd, scd, rpl, ddsddt, drplde, drpldt,
-                              stran, dstran, time, dtime, temp, dtemp, predef, dpred, cmname,
-                              ndi, nshr, ntens, nstatv, PROPS, nprops, coords, drot, pnewdt,
-                              celent, dfgrd0, dfgrd1, noel, npt, layer, kspt, kstep, kinc)
+                    raw_stress = collect(states[qp, cell].σ)
+                    raw_ddsdde = collect(ddsdde)
+                    raw_stran = collect(stran)
+                    raw_dstran = collect(dstran)
+                    call_umat(raw_stress, statev, raw_ddsdde, sse, spd, scd, rpl, ddsddt, drplde, drpldt,
+                    raw_stran, raw_dstran, time, dtime, temp, dtemp, predef, dpred, "MaterialName",
+                    ndi, nshr, ntens, nstatv, PROPS, nprops, coords, drot, pnewdt,
+                    celent, dfgrd0, dfgrd1, noel, npt, layer, kspt, kstep, kinc)
                 end
             end
 
@@ -126,7 +138,7 @@ function solve()
     end
 
     # Postprocessing
-    postprocess(grid, dh, states, material, u)
+    postprocess(grid, dh, states, nothing, u)
     plot_traction_displacement(u_max, traction_magnitude)
 end
 
