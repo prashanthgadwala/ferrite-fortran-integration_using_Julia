@@ -62,3 +62,23 @@ function create_bc(dh, grid)
     close!(dbcs)
     return dbcs
 end
+
+function doassemble!(K::SparseMatrixCSC, r::Vector, cellvalues::CellValues, dh::DofHandler,
+    material::J2Plasticity, u, states, states_old)
+assembler = start_assemble(K, r)
+nu = getnbasefunctions(cellvalues)
+re = zeros(nu)     # element residual vector
+ke = zeros(nu, nu) # element tangent matrix
+
+for (i, cell) in enumerate(CellIterator(dh))
+fill!(ke, 0)
+fill!(re, 0)
+eldofs = celldofs(cell)
+ue = u[eldofs]
+state = @view states[:, i]
+state_old = @view states_old[:, i]
+assemble_cell!(ke, re, cell, cellvalues, material, ue, state, state_old)
+assemble!(assembler, eldofs, ke, re)
+end
+return K, r
+end

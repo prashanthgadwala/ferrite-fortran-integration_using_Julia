@@ -1,9 +1,9 @@
       INTEGER NDI, NSHR, NTENS, NSTATV, NPROPS
-      PARAMETER (NDI=3)          ! Number of direct stress components
-      PARAMETER (NSHR=3)         ! Number of shear stress components
-      PARAMETER (NTENS=6)        ! Total number of stress components
-      PARAMETER (NSTATV=108)     ! Total number of state variables
-      PARAMETER (NPROPS=51)      ! Total number of material properties
+      PARAMETER (NDI_PARAM=3)          ! Number of direct stress components
+      PARAMETER (NSHR_PARAM=3)         ! Number of shear stress components
+      PARAMETER (NTENS_PARAM=6)        ! Total number of stress components
+      PARAMETER (NSTATV_PARAM=108)     ! Total number of state variables
+      PARAMETER (NPROPS_PARAM=51)      ! Total number of material properties
 
       REAL*8 TOLL, TOLL_G
       INTEGER MAX_i

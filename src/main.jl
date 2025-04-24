@@ -1,18 +1,18 @@
-include("preprocessing.jl")
-include("postprocessing.jl")
+include("./PREPROCESSING/Vevp_PreProcessing.jl")
+include("./POSTPROCESSING/Vevp_PostProcess.jl")
 
 # Wrapper function to call the Fortran UMAT subroutine
 function call_umat(stress, statev, ddsdde, sse, spd, scd, rpl, ddsddt, drplde, drpldt,
                    stran, dstran, time, dtime, temp, dtemp, predef, dpred, cmname,
                    ndi, nshr, ntens, nstatv, props, nprops, coords, drot, pnewdt,
                    celent, dfgrd0, dfgrd1, noel, npt, layer, kspt, kstep, kinc)
-    ccall((:UMAT, "libumat"), Cvoid,
+    ccall((:UMAT, "./PREPROCESSING/Material_Models/libumat.so"), Cvoid,
           (Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64},
            Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64},
            Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64},
            Ref{UInt8}, Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Float64}, Ref{Int32},
-           Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Int32}, Ref{Int32},
-           Ref{Int32}, Ref{Int32}, Ref{Int32}),
+           Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Float64}, Ref{Int32}, Ref{Int32},
+           Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{Int32}),
           stress, statev, ddsdde, sse, spd, scd, rpl, ddsddt, drplde, drpldt,
           stran, dstran, time, dtime, temp, dtemp, predef, dpred, cmname,
           ndi, nshr, ntens, nstatv, props, nprops, coords, drot, pnewdt,
