@@ -28,76 +28,60 @@ end
 
 function solve()
     # Define material properties in PROPS array
-    PROPS = [
-        2.0,          # PROPS(1): Order of approximation for logarithmic strain
-        200.0e9,      # PROPS(2): Bulk modulus at infinity (KK_inf)
-        80.0e9,       # PROPS(3): Shear modulus at infinity (GG_inf)
-        0.5,          # PROPS(4): Exponent for viscoplasticity (alpha)
-        0.3,          # PROPS(5): Poisson's ratio for plasticity (nu_p)
-        1.0e-3,       # PROPS(6): Viscosity parameter (eta)
-        1.0,          # PROPS(7): Exponent for viscosity (p_exp)
-        200e6,        # PROPS(8): Initial compressive yield stress (sigmac0)
-    
-        # Hardening parameters for compression
-        10e6,         # PROPS(9): hc1
-        5e6,          # PROPS(10): hc2
-        0.1,          # PROPS(11): hcexp
-    
-        # Hardening parameters for tension
-        150e6,        # PROPS(12): sigmat0
-        8e6,          # PROPS(13): ht1
-        4e6,          # PROPS(14): ht2
-        0.2,          # PROPS(15): htexp
-    
-        # Hardening parameters for Bauschinger effect
-        50e6,         # PROPS(16): hb0
-        2e6,          # PROPS(17): hb1
-        1e6,          # PROPS(18): hb2
-    
-        # Bulk moduli for Maxwell branches
-        1.0e9,        # PROPS(19): KK(1)
-        1.0e9,        # PROPS(20): KK(2)
-        1.0e9,        # PROPS(21): KK(3)
-        1.0e9,        # PROPS(22): KK(4)
-        1.0e9,        # PROPS(23): KK(5)
-        1.0e9,        # PROPS(24): KK(6)
-        1.0e9,        # PROPS(25): KK(7)
-        1.0e9,        # PROPS(26): KK(8)
-    
-        # Relaxation times for Maxwell branches
-        1.0e-3,       # PROPS(27): k(1)
-        1.0e-3,       # PROPS(28): k(2)
-        1.0e-3,       # PROPS(29): k(3)
-        1.0e-3,       # PROPS(30): k(4)
-        1.0e-3,       # PROPS(31): k(5)
-        1.0e-3,       # PROPS(32): k(6)
-        1.0e-3,       # PROPS(33): k(7)
-        1.0e-3,       # PROPS(34): k(8)
-    
-        # Shear moduli for Maxwell branches
-        1.0e8,        # PROPS(35): GG(1)
-        1.0e8,        # PROPS(36): GG(2)
-        1.0e8,        # PROPS(37): GG(3)
-        1.0e8,        # PROPS(38): GG(4)
-        1.0e8,        # PROPS(39): GG(5)
-        1.0e8,        # PROPS(40): GG(6)
-        1.0e8,        # PROPS(41): GG(7)
-        1.0e8,        # PROPS(42): GG(8)
-    
-        # Viscosity parameters for Maxwell branches
-        1.0e-2,       # PROPS(43): g(1)
-        1.0e-2,       # PROPS(44): g(2)
-        1.0e-2,       # PROPS(45): g(3)
-        1.0e-2,       # PROPS(46): g(4)
-        1.0e-2,       # PROPS(47): g(5)
-        1.0e-2,       # PROPS(48): g(6)
-        1.0e-2,       # PROPS(49): g(7)
-        1.0e-2,       # PROPS(50): g(8)
-    
-        # Additional parameter (if needed)
-        0.0           # PROPS(51): Reserved for future use
-    ]
 
+    PROPS = [
+        5.0,            # 1: Power Series Strain Approximation
+        1470.588416,    # 2: Bulk Modulus
+        563.9098439,    # 3: Shear Modulus
+        5.900948586,    # 4: Yield Exponent
+        0.33,           # 5: Plastic Poisson Ratio
+        0.001,          # 6: Viscoplastic Coefficient / Viscosity Parameter
+        10.0,           # 7: Viscoplastic Exponent
+        2.086229688,    # 8: Initial Yield Limit - Compression
+        2164.115496,    # 9: Isotropic Hardening Parameter - Compression
+        4.450073598,    # 10: Isotropic Hardening Parameter - Compression
+        5401.554318,    # 11: Isotropic Hardening Parameter - Compression
+        1.66898375,     # 12: Initial Yield Limit - Tension
+        1731.292397,    # 13: Isotropic Hardening Parameter – Tension
+        3.560058879,    # 14: Isotropic Hardening Parameter – Tension
+        5401.554318,    # 15: Isotropic Hardening Parameter – Tension
+        0.0,            # 16: Kinematic Hardening Parameter
+        0.0,            # 17: Kinematic Hardening Parameter
+        0.0,            # 18: Kinematic Hardening Parameter
+        298.5381412,    # 19: Bulk Modulus – Maxwell branch 1
+        128.572959,     # 20: Bulk Modulus – Maxwell branch 2
+        126.0116202,    # 21: Bulk Modulus – Maxwell branch 3
+        56.16237131,    # 22: Bulk Modulus – Maxwell branch 4
+        73.29632907,    # 23: Bulk Modulus – Maxwell branch 5
+        34.58797299,    # 24: Bulk Modulus – Maxwell branch 6
+        25.90272535,    # 25: Bulk Modulus – Maxwell branch 7
+        117.6700904,    # 26: Bulk Modulus – Maxwell branch 8
+        1000.0,         # 27: Volumetric Relaxation Time – Maxwell Branch 1
+        100.0,          # 28: Volumetric Relaxation Time – Maxwell Branch 2
+        10.0,           # 29: Volumetric Relaxation Time – Maxwell Branch 3
+        1.0,            # 30: Volumetric Relaxation Time – Maxwell Branch 4
+        0.1,            # 31: Volumetric Relaxation Time – Maxwell Branch 5
+        0.01,           # 32: Volumetric Relaxation Time – Maxwell Branch 6
+        0.001,          # 33: Volumetric Relaxation Time – Maxwell Branch 7
+        0.0001,         # 34: Volumetric Relaxation Time – Maxwell Branch 8
+        114.4770316,    # 35: Shear Modulus – Maxwell branch 1
+        49.30241285,    # 36: Shear Modulus – Maxwell branch 2
+        48.32024532,    # 37: Shear Modulus – Maxwell branch 3
+        21.53594689,    # 38: Shear Modulus – Maxwell branch 4
+        28.10611115,    # 39: Shear Modulus – Maxwell branch 5
+        13.26305731,    # 40: Shear Modulus – Maxwell branch 6
+        9.932624005,    # 41: Shear Modulus – Maxwell branch 7
+        45.1216136,     # 42: Shear Modulus – Maxwell branch 8
+        1000.0,         # 43: Deviatoric Relaxation Time – Maxwell Branch 1
+        100.0,          # 44: Deviatoric Relaxation Time – Maxwell Branch 2
+        10.0,           # 45: Deviatoric Relaxation Time – Maxwell Branch 3
+        1.0,            # 46: Deviatoric Relaxation Time – Maxwell Branch 4
+        0.1,            # 47: Deviatoric Relaxation Time – Maxwell Branch 5
+        0.01,           # 48: Deviatoric Relaxation Time – Maxwell Branch 6
+        0.001,          # 49: Deviatoric Relaxation Time – Maxwell Branch 7
+        0.0001          # 50: Deviatoric Relaxation Time – Maxwell Branch 8
+    ]
+    
     nprops = length(PROPS) # Number of material properties
 
 
@@ -132,7 +116,7 @@ function solve()
     # Newton-Raphson loop
     n_timesteps = 10
     u_max = zeros(n_timesteps)
-    traction_magnitude = 1.e7 * range(0.5, 1.0, length=n_timesteps)
+    traction_magnitude = -1.e7 * range(0.5, 1.0, length=n_timesteps)
     NEWTON_TOL = 1e-6
 
     for timestep in 1:n_timesteps

@@ -77,7 +77,7 @@ function compute_stress_tangent(ϵ::SymmetricTensor{2, 3}, G::Float64, H::Float6
 
         c1 = 1 - 3G * μ / σᵗₑ
         s = c1 * sᵗ           # updated deviatoric stress
-        σ = s + vol(σᵗ)       # updated stress
+        σ = s + vol(σᵗ)        # updated stress
 
         # Compute algorithmic tangent stiffness ``D = \frac{\Delta \sigma }{\Delta \epsilon}``
         κ = H * (state.k + μ) # drag stress
