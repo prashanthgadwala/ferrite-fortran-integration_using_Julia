@@ -110,8 +110,9 @@ function solve()
 
     # Material states
     nqp = getnquadpoints(cellvalues)
-    states = [MaterialState() for _ in 1:nqp, _ in 1:getncells(grid)]
-    states_old = [MaterialState() for _ in 1:nqp, _ in 1:getncells(grid)]
+    nstatv = 108 # Number of state variables
+    states = [zeros(nstatv) for _ in 1:nqp, _ in 1:getncells(grid)]
+    states_old = [zeros(nstatv) for _ in 1:nqp, _ in 1:getncells(grid)]
 
     # Newton-Raphson loop
     n_timesteps = 10
@@ -134,7 +135,7 @@ function solve()
                 for qp in 1:nqp
                     # Extract required variables for UMAT
                     stress = states[qp, cell].σ
-                    statev = zeros(108) # Example: adjust based on UMAT requirements
+                    statev = statev[qp, cell]
                     ddsdde = zeros(6, 6)
                     sse, spd, scd, rpl, ddsddt, drplde, drpldt = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
                     stran = zeros(6)

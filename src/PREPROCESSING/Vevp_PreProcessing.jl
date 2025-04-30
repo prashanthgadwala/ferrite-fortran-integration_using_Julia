@@ -24,6 +24,20 @@ function J2Plasticity(E, ν, σ₀, H)
     return J2Plasticity(G, K, σ₀, H, Dᵉ)
 end
 
+struct MaterialState{T, S <: SecondOrderTensor{3, T}}
+    ϵᵖ::S # plastic strain
+    σ::S  # stress
+    k::T  # hardening variable
+end
+
+function MaterialState()
+    return MaterialState(
+        zero(SymmetricTensor{2, 3}),
+        zero(SymmetricTensor{2, 3}),
+        0.0
+    )
+end
+
 """
 
 function doassemble_neumann!(r, dh, facetset, facetvalues, t)
@@ -45,19 +59,7 @@ function doassemble_neumann!(r, dh, facetset, facetvalues, t)
     return r
 end
 
-struct MaterialState{T, S <: SecondOrderTensor{3, T}}
-    ϵᵖ::S # plastic strain
-    σ::S  # stress
-    k::T  # hardening variable
-end
 
-function MaterialState()
-    return MaterialState(
-        zero(SymmetricTensor{2, 3}),
-        zero(SymmetricTensor{2, 3}),
-        0.0
-    )
-end
 
 function compute_stress_tangent(ϵ::SymmetricTensor{2, 3}, G::Float64, H::Float64, σ₀::Float64, Dᵉ::SymmetricTensor{4, 3}, state::MaterialState)
     # We use (•)ᵗ to denote *trial*-values
