@@ -125,52 +125,18 @@ function solve()
         traction = Vec((0.0, 0.0, traction_magnitude[timestep]))
         update!(dbcs, t)
         apply!(u, dbcs)
-
+    
         for newton_itr in 1:10
-            # Assemble stiffness matrix and residual vector
-            doassemble!(K, r, cellvalues, dh, PROPS, u, states, states_old)
-
-            for cell in 1:getncells(grid)
-                for qp in 1:nqp
-                    statev = states[qp, cell]
-                    ddsdde = zeros(6, 6)
-                    sse, spd, scd, rpl, ddsddt, drplde, drpldt = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-                    stress = zeros(6)      # Local variable for UMAT output
-                    stran = zeros(6)       # TODO: Replace with actual strain at this qp
-                    dstran = zeros(6)      # TODO: Replace with actual strain increment at this qp
-                    time = [0.0, t]
-                    dtime = 1.0
-                    temp, dtemp, predef, dpred = 0.0, 0.0, 0.0, 0.0
-                    cmname = "MaterialName"
-                    ndi, nshr, ntens, nstatv = 3, 3, 6, 108
-                    coords = zeros(3)
-                    drot = zeros(3, 3)
-                    pnewdt = 0.0
-                    celent = 1.0
-                    dfgrd0 = zeros(3, 3)
-                    dfgrd1 = zeros(3, 3)
-                    noel, npt, layer, kspt, kstep, kinc = 1, 1, 1, 1, 1, timestep
-            
-                    call_umat(stress, statev, ddsdde, sse, spd, scd, rpl, ddsddt, drplde, drpldt,
-                              stran, dstran, time, dtime, temp, dtemp, predef, dpred, cmname,
-                              ndi, nshr, ntens, nstatv, PROPS, nprops, coords, drot, pnewdt,
-                              celent, dfgrd0, dfgrd1, noel, npt, layer, kspt, kstep, kinc)
-                    # statev is updated in-place by UMAT
-                end
-            end
-            # Neumann boundary conditions
+            doassemble!(K, r, cellvalues, dh, PROPS, u, states, states_old, nprops, t)
             doassemble_neumann!(r, dh, getfacetset(grid, "right"), facetvalues, traction)
             norm_r = norm(r[Ferrite.free_dofs(dbcs)])
-
             if norm_r < NEWTON_TOL
                 break
             end
-
             apply_zero!(K, r, dbcs)
             Δu = Symmetric(K) \ r
             u -= Δu
         end
-
         states_old .= states
         u_max[timestep] = maximum(abs, u)
     end
