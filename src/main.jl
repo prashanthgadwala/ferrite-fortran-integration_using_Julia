@@ -130,16 +130,14 @@ function solve()
             # Assemble stiffness matrix and residual vector
             doassemble!(K, r, cellvalues, dh, PROPS, u, states, states_old)
 
-            # Call Fortran UMAT for material computations
             for cell in 1:getncells(grid)
                 for qp in 1:nqp
-                    # Extract required variables for UMAT
-                    stress = states[qp, cell].σ
-                    statev = statev[qp, cell]
+                    statev = states[qp, cell]
                     ddsdde = zeros(6, 6)
                     sse, spd, scd, rpl, ddsddt, drplde, drpldt = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-                    stran = zeros(6)
-                    dstran = zeros(6)
+                    stress = zeros(6)      # Local variable for UMAT output
+                    stran = zeros(6)       # TODO: Replace with actual strain at this qp
+                    dstran = zeros(6)      # TODO: Replace with actual strain increment at this qp
                     time = [0.0, t]
                     dtime = 1.0
                     temp, dtemp, predef, dpred = 0.0, 0.0, 0.0, 0.0
@@ -152,19 +150,14 @@ function solve()
                     dfgrd0 = zeros(3, 3)
                     dfgrd1 = zeros(3, 3)
                     noel, npt, layer, kspt, kstep, kinc = 1, 1, 1, 1, 1, timestep
-
-                    # Call UMAT
-                    raw_stress = collect(states[qp, cell].σ)
-                    raw_ddsdde = collect(ddsdde)
-                    raw_stran = collect(stran)
-                    raw_dstran = collect(dstran)
-                    call_umat(raw_stress, statev, raw_ddsdde, sse, spd, scd, rpl, ddsddt, drplde, drpldt,
-                    raw_stran, raw_dstran, time, dtime, temp, dtemp, predef, dpred, "MaterialName",
-                    ndi, nshr, ntens, nstatv, PROPS, nprops, coords, drot, pnewdt,
-                    celent, dfgrd0, dfgrd1, noel, npt, layer, kspt, kstep, kinc)
+            
+                    call_umat(stress, statev, ddsdde, sse, spd, scd, rpl, ddsddt, drplde, drpldt,
+                              stran, dstran, time, dtime, temp, dtemp, predef, dpred, cmname,
+                              ndi, nshr, ntens, nstatv, PROPS, nprops, coords, drot, pnewdt,
+                              celent, dfgrd0, dfgrd1, noel, npt, layer, kspt, kstep, kinc)
+                    # statev is updated in-place by UMAT
                 end
             end
-
             # Neumann boundary conditions
             doassemble_neumann!(r, dh, getfacetset(grid, "right"), facetvalues, traction)
             norm_r = norm(r[Ferrite.free_dofs(dbcs)])

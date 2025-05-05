@@ -1,50 +1,9 @@
 using Ferrite, Tensors, SparseArrays, LinearAlgebra, Printf
 
-
-"""
-# Define material properties
-struct J2Plasticity{T, S <: SymmetricTensor{4, 3, T}}
-    G::T  # Shear modulus
-    K::T  # Bulk modulus
-    σ₀::T # Initial yield limit
-    H::T  # Hardening modulus
-    Dᵉ::S # Elastic stiffness tensor
-end
-
-
-
-function J2Plasticity(E, ν, σ₀, H)
-    δ(i,j) = i == j ? 1.0 : 0.0 # helper function
-    G = E / 2(1 + ν)
-    K = E / 3(1 - 2ν)
-
-    Isymdev(i,j,k,l) = 0.5*(δ(i,k)*δ(j,l) + δ(i,l)*δ(j,k)) - 1.0/3.0*δ(i,j)*δ(k,l)
-    temp(i,j,k,l) = 2.0G *( 0.5*(δ(i,k)*δ(j,l) + δ(i,l)*δ(j,k)) + ν/(1.0-2.0ν)*δ(i,j)*δ(k,l))
-    Dᵉ = SymmetricTensor{4, 3}(temp)
-    return J2Plasticity(G, K, σ₀, H, Dᵉ)
-end
-
-struct MaterialState{T, S <: SecondOrderTensor{3, T}}
-    ϵᵖ::S # plastic strain
-    σ::S  # stress
-    k::T  # hardening variable
-end
-
-function MaterialState()
-    return MaterialState(
-        zero(SymmetricTensor{2, 3}),
-        zero(SymmetricTensor{2, 3}),
-        0.0
-    )
-end
-
-"""
-
 function doassemble_neumann!(r, dh, facetset, facetvalues, t)
     n_basefuncs = getnbasefunctions(facetvalues)
-    re = zeros(n_basefuncs)                      # element residual vector
+    re = zeros(n_basefuncs)
     for fc in FacetIterator(dh, facetset)
-        # Add traction as a negative contribution to the element residual `re`:
         reinit!(facetvalues, fc)
         fill!(re, 0)
         for q_point in 1:getnquadpoints(facetvalues)
@@ -59,46 +18,33 @@ function doassemble_neumann!(r, dh, facetset, facetvalues, t)
     return r
 end
 
+function compute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, statev::Vector{Float64}, PROPS::Vector{Float64}, nprops::Int, t::Float64)
+    stress = zeros(6)
+    ddsdde = zeros(6, 6)
+    sse, spd, scd, rpl, ddsddt, drplde, drpldt = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    stran = ϵ
+    dstran = dϵ
+    time = [0.0, t]
+    dtime = 1.0
+    temp, dtemp, predef, dpred = 0.0, 0.0, 0.0, 0.0
+    cmname = "VEVP"
+    ndi, nshr, ntens, nstatv = 3, 3, 6, length(statev)
+    coords = zeros(3)
+    drot = zeros(3, 3)
+    pnewdt = 0.0
+    celent = 1.0
+    dfgrd0 = Matrix{Float64}(I, 3, 3)
+    dfgrd1 = Matrix{Float64}(I, 3, 3)
+    noel, npt, layer, kspt, kstep, kinc = 1, 1, 1, 1, 1, 1
 
+    call_umat(
+        stress, statev, ddsdde, sse, spd, scd, rpl, ddsddt, drplde, drpldt,
+        stran, dstran, time, dtime, temp, dtemp, predef, dpred, cmname,
+        ndi, nshr, ntens, nstatv, PROPS, nprops, coords, drot, pnewdt,
+        celent, dfgrd0, dfgrd1, noel, npt, layer, kspt, kstep, kinc
+    )
 
-function compute_stress_tangent(ϵ::SymmetricTensor{2, 3}, G::Float64, H::Float64, σ₀::Float64, Dᵉ::SymmetricTensor{4, 3}, state::MaterialState)
-    # We use (•)ᵗ to denote *trial*-values
-    σᵗ = Dᵉ ⊡ (ϵ - state.ϵᵖ) # trial-stress
-    sᵗ = dev(σᵗ)         # deviatoric part of trial-stress
-    J₂ = 0.5 * sᵗ ⊡ sᵗ   # second invariant of sᵗ
-    σᵗₑ = sqrt(3.0*J₂)   # effective trial-stress (von Mises stress)
-    σʸ = σ₀ + H * state.k # Previous yield limit
-
-    φᵗ  = σᵗₑ - σʸ # Trial-value of the yield surface
-
-    if φᵗ < 0.0 # elastic loading
-        return σᵗ, Dᵉ, MaterialState(state.ϵᵖ, σᵗ, state.k)
-    else # plastic loading
-        h = H + 3G
-        μ =  φᵗ / h   # plastic multiplier
-
-        c1 = 1 - 3G * μ / σᵗₑ
-        s = c1 * sᵗ           # updated deviatoric stress
-        σ = s + vol(σᵗ)        # updated stress
-
-        # Compute algorithmic tangent stiffness ``D = \frac{\Delta \sigma }{\Delta \epsilon}``
-        κ = H * (state.k + μ) # drag stress
-        σₑ = σ₀ + κ  # updated yield surface
-
-        δ(i,j) = i == j ? 1.0 : 0.0
-        Isymdev(i,j,k,l)  = 0.5*(δ(i,k)*δ(j,l) + δ(i,l)*δ(j,k)) - 1.0/3.0*δ(i,j)*δ(k,l)
-        Q(i,j,k,l) = Isymdev(i,j,k,l) - 3.0 / (2.0*σₑ^2) * s[i,j]*s[k,l]
-        b = (3G*μ/σₑ) / (1.0 + 3G*μ/σₑ)
-
-        Dtemp(i,j,k,l) = -2G*b * Q(i,j,k,l) - 9G^2 / (h*σₑ^2) * s[i,j]*s[k,l]
-        D = Dᵉ + SymmetricTensor{4, 3}(Dtemp)
-
-        # Return new state
-        Δϵᵖ = 3/2 * μ / σₑ * s # plastic strain
-        ϵᵖ = state.ϵᵖ + Δϵᵖ    # plastic strain
-        k = state.k + μ        # hardening variable
-        return σ, D, MaterialState(ϵᵖ, σ, k)
-    end
+    return stress, ddsdde, statev
 end
 
 function create_values(interpolation)
@@ -130,22 +76,27 @@ function create_bc(dh, grid)
     return dbcs
 end
 
-function assemble_cell!(Ke, re, cell, cellvalues, G, H, σ₀, Dᵉ, ue, state, state_old)
+function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, state_old, t)
     n_basefuncs = getnbasefunctions(cellvalues)
     reinit!(cellvalues, cell)
 
     for q_point in 1:getnquadpoints(cellvalues)
-        # For each integration point, compute stress and material stiffness
-        ϵ = function_symmetric_gradient(cellvalues, q_point, ue) # Total strain
-        σ, D, state[q_point] = compute_stress_tangent(ϵ, G, H, σ₀, Dᵉ, state_old[q_point])
+        # Compute total strain at this quadrature point
+        ϵ = function_symmetric_gradient(cellvalues, q_point, ue)
+        # Compute previous strain if you want to use strain increment
+        ϵ_old = state_old[q_point][1:6]  # If you store previous strain, else zeros(6)
+        dϵ = ϵ - ϵ_old
+
+        # Call UMAT-based stress/tangent
+        σ, D, state[q_point] = compute_stress_tangent(collect(ϵ), collect(dϵ), state_old[q_point], PROPS, nprops, t)
 
         dΩ = getdetJdV(cellvalues, q_point)
         for i in 1:n_basefuncs
             δϵ = shape_symmetric_gradient(cellvalues, q_point, i)
-            re[i] += (δϵ ⊡ σ) * dΩ # add internal force to residual
-            for j in 1:i # loop only over lower half
+            re[i] += (δϵ ⋅ σ) * dΩ
+            for j in 1:i
                 Δϵ = shape_symmetric_gradient(cellvalues, q_point, j)
-                Ke[i, j] += δϵ ⊡ D ⊡ Δϵ * dΩ
+                Ke[i, j] += δϵ' * D * Δϵ * dΩ
             end
         end
     end
@@ -161,16 +112,7 @@ function symmetrize_lower!(K)
 end;
 
 function doassemble!(K::SparseMatrixCSC, r::Vector, cellvalues::CellValues, dh::DofHandler,
-                     props::Vector{Float64}, u, states, states_old)
-    # Extract material properties from PROPS
-    G = props[2] / (2 * (1 + props[3])) # Shear modulus
-    H = props[5]                        # Hardening modulus
-    σ₀ = props[4]                       # Initial yield stress
-    ν = props[3]                        # Poisson's ratio
-    δ(i,j) = i == j ? 1.0 : 0.0
-    temp(i,j,k,l) = 2.0 * G * (0.5 * (δ(i,k)*δ(j,l) + δ(i,l)*δ(j,k)) + ν / (1.0 - 2.0 * ν) * δ(i,j)*δ(k,l))
-    Dᵉ = SymmetricTensor{4, 3}(temp)
-
+                     PROPS::Vector{Float64}, u, states, states_old, nprops, t)
     assembler = start_assemble(K, r)
     nu = getnbasefunctions(cellvalues)
     re = zeros(nu)     # element residual vector
@@ -184,8 +126,8 @@ function doassemble!(K::SparseMatrixCSC, r::Vector, cellvalues::CellValues, dh::
 
         state = @view states[:, i]
         state_old = @view states_old[:, i]
-        # Pass material properties explicitly to assemble_cell!
-        assemble_cell!(ke, re, cell, cellvalues, G, H, σ₀, Dᵉ, ue, state, state_old)
+        # Call UMAT-based assembly
+        assemble_cell!(ke, re, cell, cellvalues, PROPS, nprops, ue, state, state_old, t)
         assemble!(assembler, eldofs, ke, re)
     end
     return K, r
