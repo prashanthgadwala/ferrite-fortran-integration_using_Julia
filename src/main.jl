@@ -144,6 +144,13 @@ function solve()
     # Postprocessing
     postprocess(grid, dh, states, states_old, PROPS, u, "UserDef_VEVP_Model")
     plot_traction_displacement(u_max, traction_magnitude)
+    display(current())
+    plot_stress_strain(states)
+    display(current())
+    plot_strain_rate(states, states_old, 0.1)
+    display(current())
+    plot_hardening(states)
+    display(current())
 end
 
 solve()

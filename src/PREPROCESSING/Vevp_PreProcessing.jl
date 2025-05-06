@@ -103,6 +103,7 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
 
         # Call UMAT-based stress/tangent
         σ, D, state[q_point] = compute_stress_tangent(ϵ, dϵ, state_old[q_point], PROPS, nprops, t)
+        state[q_point][1:6] .= σ # Store current stress in state
 
         dΩ = getdetJdV(cellvalues, q_point)
         for i in 1:n_basefuncs
