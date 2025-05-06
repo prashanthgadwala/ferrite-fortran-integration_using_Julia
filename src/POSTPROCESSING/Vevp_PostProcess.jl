@@ -58,25 +58,11 @@ function plot_traction_displacement(u_max, traction_magnitude)
     xlabel!("Maximum deflection [m]")
 end
 
-function plot_stress_strain(states)
-    strains = Float64[]
-    stresses = Float64[]
-    for cell_states in eachcol(states)
-        for state in cell_states
-            ϵ_voigt = state[10:15]
-            ϵ = voigt_to_tensor(ϵ_voigt)
-            σ_voigt = state[1:6]
-            σ = voigt_to_tensor(σ_voigt)
-            eq_strain = sqrt(2.0 / 3.0 * tr(ϵ ⊡ ϵ))
-            eq_stress = vonMises(σ)
-            push!(strains, eq_strain)
-            push!(stresses, eq_stress)
-        end
-    end
+function plot_stress_strain_hist(strain_hist, stress_hist)
     plot(
-        strains, stresses,
+        strain_hist, stress_hist,
         linewidth=2,
-        title="Stress vs. Strain",
+        title="Stress vs. Strain (at one point)",
         xlabel="Equivalent Strain",
         ylabel="Equivalent Stress [Pa]",
         label=nothing,
@@ -84,43 +70,30 @@ function plot_stress_strain(states)
     )
 end
 
-function plot_strain_rate(states, states_old, Δt)
-    strain_rates = Float64[]
-    for (cell_states, cell_states_old) in zip(eachcol(states), eachcol(states_old))
-        for (state, state_old) in zip(cell_states, cell_states_old)
-            ϵ_voigt = state[10:15]
-            ϵ_old_voigt = state_old[10:15]
-            dϵ_voigt = (ϵ_voigt - ϵ_old_voigt) / Δt
-            dϵ = voigt_to_tensor(dϵ_voigt)
-            eq_strain_rate = sqrt(2.0 / 3.0 * tr(dϵ ⊡ dϵ))
-            push!(strain_rates, eq_strain_rate)
-        end
-    end
+function plot_hardening_hist(hardening_hist)
     plot(
-        1:length(strain_rates), strain_rates,
+        1:length(hardening_hist), hardening_hist,
         linewidth=2,
-        title="Strain Rate",
-        xlabel="Integration Point Index",
-        ylabel="Equivalent Strain Rate [1/s]",
+        title="Hardening Variable (at one point)",
+        xlabel="Timestep",
+        ylabel="Hardening Variable",
         label=nothing,
         markershape=:auto
     )
 end
 
-function plot_hardening(states)
-    hardening_values = Float64[]
-    for cell_states in eachcol(states)
-        for state in cell_states
-            k = state[19]
-            push!(hardening_values, k)
-        end
+function plot_strain_rate_hist(strain_hist, Δt = 0.1)
+    strain_rate_hist = Float64[]
+    for i in 2:length(strain_hist)
+        rate = (strain_hist[i] - strain_hist[i-1]) / Δt
+        push!(strain_rate_hist, rate)
     end
     plot(
-        1:length(hardening_values), hardening_values,
+        2:length(strain_hist), strain_rate_hist,
         linewidth=2,
-        title="Hardening Variable",
-        xlabel="Integration Point Index",
-        ylabel="Hardening Variable",
+        title="Strain Rate (at one point)",
+        xlabel="Timestep",
+        ylabel="Equivalent Strain Rate [1/s]",
         label=nothing,
         markershape=:auto
     )

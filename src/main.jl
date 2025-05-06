@@ -26,6 +26,22 @@ function call_umat(stress, statev, ddsdde, sse, spd, scd, rpl, ddsddt, drplde, d
           celent, dfgrd0, dfgrd1, noel, npt, layer, kspt, kstep, kinc)
 end
 
+
+function find_nonzero_state(states; tol=1e-8)
+    nqp, ncells = size(states)
+    for c in 1:ncells
+        for q in 1:nqp
+            state = states[q, c]
+            σ_voigt = state[1:6]
+            if any(abs.(σ_voigt) .> tol)
+                return q, c
+            end
+        end
+    end
+    error("No nonzero stress found in states array!")
+end
+
+
 function solve()
     # Define material properties in PROPS array
 
@@ -120,6 +136,18 @@ function solve()
     traction_magnitude = 1.e7 * range(0.5, 1.0, length=n_timesteps)
     NEWTON_TOL = 1e-6
 
+    # --- For single-point history tracking ---
+    nqp = getnquadpoints(cellvalues)
+    ncells = getncells(grid)
+    qp_idx = 5                # or Int(ceil(nqp/2)) for middle quadrature point
+    cell_idx = 143         # last cell, usually at loaded end
+    println("Tracking cell $cell_idx, qp $qp_idx for history plots.")
+    Δt = 0.01
+    strain_hist = Float64[]
+    stress_hist = Float64[]
+    hardening_hist = Float64[]
+
+
     for timestep in 1:n_timesteps
         t = timestep 
         traction = Vec((0.0, 0.0, traction_magnitude[timestep]))
@@ -139,17 +167,30 @@ function solve()
         end
         states_old .= states
         u_max[timestep] = maximum(abs, u)
+
+        # --- Record state at the chosen point ---
+        state = states[qp_idx, cell_idx]
+        ϵ_voigt = state[10:15]
+        σ_voigt = state[1:6]
+        k = state[19]
+        ϵ = voigt_to_tensor(ϵ_voigt)
+        σ = voigt_to_tensor(σ_voigt)
+        eq_strain = sqrt(2.0 / 3.0 * tr(ϵ ⊡ ϵ))
+        eq_stress = vonMises(σ)
+        push!(strain_hist, eq_strain)
+        push!(stress_hist, eq_stress)
+        push!(hardening_hist, k)
     end
 
     # Postprocessing
     postprocess(grid, dh, states, states_old, PROPS, u, "UserDef_VEVP_Model")
     plot_traction_displacement(u_max, traction_magnitude)
     display(current())
-    plot_stress_strain(states)
+    plot_stress_strain_hist(strain_hist, stress_hist)
     display(current())
-    plot_strain_rate(states, states_old, 0.1)
+    plot_hardening_hist(hardening_hist)
     display(current())
-    plot_hardening(states)
+    plot_strain_rate_hist(strain_hist, Δt)
     display(current())
 end
 
