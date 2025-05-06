@@ -18,7 +18,7 @@ function doassemble_neumann!(r, dh, facetset, facetvalues, t)
     return r
 end
 
-function compute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, statev::Vector{Float64}, PROPS::Vector{Float64}, nprops::Int, t::Float64)
+function compute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, statev::Vector{Float64}, PROPS::Vector{Float64}, nprops::Int64, t::Int64)
     stress = zeros(6)
     ddsdde = zeros(6, 6)
     sse, spd, scd, rpl, ddsddt, drplde, drpldt = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
@@ -76,26 +76,42 @@ function create_bc(dh, grid)
     return dbcs
 end
 
+
+function mat2voit(tensor::SymmetricTensor{2, 3, Float64, 6})
+    return [
+        tensor[1, 1],  # xx
+        tensor[2, 2],  # yy
+        tensor[3, 3],  # zz
+        tensor[1, 2],  # xy
+        tensor[1, 3],  # xz
+        tensor[2, 3]   # yz
+    ]
+end
+
 function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, state_old, t)
     n_basefuncs = getnbasefunctions(cellvalues)
     reinit!(cellvalues, cell)
 
     for q_point in 1:getnquadpoints(cellvalues)
         # Compute total strain at this quadrature point
-        ϵ = function_symmetric_gradient(cellvalues, q_point, ue)
+        ϵ_ = function_symmetric_gradient(cellvalues, q_point, ue)
+        ϵ = mat2voit(ϵ_)
+
         # Compute previous strain if you want to use strain increment
         ϵ_old = state_old[q_point][1:6]  # If you store previous strain, else zeros(6)
         dϵ = ϵ - ϵ_old
 
         # Call UMAT-based stress/tangent
-        σ, D, state[q_point] = compute_stress_tangent(collect(ϵ), collect(dϵ), state_old[q_point], PROPS, nprops, t)
+        σ, D, state[q_point] = compute_stress_tangent(ϵ, dϵ, state_old[q_point], PROPS, nprops, t)
 
         dΩ = getdetJdV(cellvalues, q_point)
         for i in 1:n_basefuncs
-            δϵ = shape_symmetric_gradient(cellvalues, q_point, i)
+            δϵ_ = shape_symmetric_gradient(cellvalues, q_point, i)
+            δϵ = mat2voit(δϵ_)
             re[i] += (δϵ ⋅ σ) * dΩ
             for j in 1:i
-                Δϵ = shape_symmetric_gradient(cellvalues, q_point, j)
+                Δϵ_ = shape_symmetric_gradient(cellvalues, q_point, j)
+                Δϵ = mat2voit(Δϵ_)
                 Ke[i, j] += δϵ' * D * Δϵ * dΩ
             end
         end

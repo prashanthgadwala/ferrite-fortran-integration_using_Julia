@@ -117,11 +117,11 @@ function solve()
     # Newton-Raphson loop
     n_timesteps = 10
     u_max = zeros(n_timesteps)
-    traction_magnitude = -1.e7 * range(0.5, 1.0, length=n_timesteps)
+    traction_magnitude = 1.e7 * range(0.5, 1.0, length=n_timesteps)
     NEWTON_TOL = 1e-6
 
     for timestep in 1:n_timesteps
-        t = timestep
+        t = timestep 
         traction = Vec((0.0, 0.0, traction_magnitude[timestep]))
         update!(dbcs, t)
         apply!(u, dbcs)
@@ -142,7 +142,7 @@ function solve()
     end
 
     # Postprocessing
-    postprocess(grid, dh, states, PROPS, u)
+    postprocess(grid, dh, states, states_old, PROPS, u, "UserDef_VEVP_Model")
     plot_traction_displacement(u_max, traction_magnitude)
 end
 
