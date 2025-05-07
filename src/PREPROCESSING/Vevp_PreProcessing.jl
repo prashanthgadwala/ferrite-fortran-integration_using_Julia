@@ -43,7 +43,8 @@ function compute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, state
         ndi, nshr, ntens, nstatv, PROPS, nprops, coords, drot, pnewdt,
         celent, dfgrd0, dfgrd1, noel, npt, layer, kspt, kstep, kinc
     )
-
+    # println("UMAT input strain: ", ϵ)
+    # println("UMAT output stress: ", stress)
     return stress, ddsdde, statev
 end
 

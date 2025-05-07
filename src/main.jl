@@ -1,3 +1,6 @@
+using Ferrite
+
+
 include("./PREPROCESSING/Vevp_PreProcessing.jl")
 include("./POSTPROCESSING/Vevp_PostProcess.jl")
 
@@ -112,6 +115,9 @@ function solve()
     grid = generate_grid(Hexahedron, nels, P1, P2)
     interpolation = Lagrange{RefHexahedron, 2}()^3
 
+    # Ferrite.addfacetset!(grid, "right", (x, t) -> isapprox(x[1], L; atol=1e-8))
+    println("Facetset 'right' has ", length(getfacetset(grid, "right")), " facets.")
+
     # Preprocessing
     dh = create_dofhandler(grid, interpolation)
     dbcs = create_bc(dh, grid)
@@ -153,6 +159,8 @@ function solve()
         traction = Vec((0.0, 0.0, traction_magnitude[timestep]))
         update!(dbcs, t)
         apply!(u, dbcs)
+        println("Residual norm after NR: ", norm(r))
+        println("Max displacement after NR: ", maximum(abs, u))
     
         for newton_itr in 1:10
             doassemble!(K, r, cellvalues, dh, PROPS, u, states, states_old, nprops, t)
@@ -165,11 +173,23 @@ function solve()
             Δu = Symmetric(K) \ r
             u -= Δu
         end
+
+        println("Timestep $t")
+        for c in 1:ncells
+            for q in 1:nqp
+                state = states[q, c]
+                ϵ_voigt = state[10:15]
+                # println("Cell $c, QP $q, strain = ", ϵ_voigt)
+            end
+        end
+
         states_old .= states
         u_max[timestep] = maximum(abs, u)
 
         # --- Record state at the chosen point ---
         state = states[qp_idx, cell_idx]
+        println("Tracked point strain: ", state[10:15])
+        println("Tracked point stress: ", state[1:6])
         ϵ_voigt = state[10:15]
         σ_voigt = state[1:6]
         k = state[19]
