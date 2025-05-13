@@ -3,7 +3,7 @@
       PARAMETER (NSHR_PARAM=3)         ! Number of shear stress components
       PARAMETER (NTENS_PARAM=6)        ! Total number of stress components
       PARAMETER (NSTATV_PARAM=108)     ! Total number of state variables
-      PARAMETER (NPROPS_PARAM=51)      ! Total number of material properties
+      PARAMETER (NPROPS_PARAM=50)      ! Total number of material properties
 
       REAL*8 TOLL, TOLL_G
       INTEGER MAX_i

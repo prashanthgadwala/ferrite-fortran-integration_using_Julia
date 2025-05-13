@@ -122,7 +122,7 @@ function solve()
     u = zeros(n_dofs)
     Δu = zeros(n_dofs)
     r = zeros(n_dofs)
-    K = allocate_matrix(dh)
+    K = allocate_matrix(dh, dbcs)
 
     # Material states
     nqp = getnquadpoints(cellvalues)
@@ -133,8 +133,11 @@ function solve()
     # Newton-Raphson loop
     n_timesteps = 10
     u_max = zeros(n_timesteps)
-    traction_magnitude = 1.e7 * range(0.5, 1.0, length=n_timesteps)
-    NEWTON_TOL = 1e-6
+    # traction_magnitude = 1.e3 * range(0.5, 1.0, length=n_timesteps)
+    initial_traction = 1.0 # Start with a very small, almost negligible load
+    max_traction = 50.0    # A much smaller maximum target
+    traction_magnitude = [initial_traction + (max_traction - initial_traction) * ((t-1)/(n_timesteps-1))^2 for t in 1:n_timesteps]
+    NEWTON_TOL = 1e-8
 
     # --- For single-point history tracking ---
     nqp = getnquadpoints(cellvalues)
@@ -142,7 +145,7 @@ function solve()
     qp_idx = 5                # or Int(ceil(nqp/2)) for middle quadrature point
     cell_idx = 143         # last cell, usually at loaded end
     println("Tracking cell $cell_idx, qp $qp_idx for history plots.")
-    Δt = 0.01
+    Δt = 0.001
     strain_hist = Float64[]
     stress_hist = Float64[]
     hardening_hist = Float64[]
@@ -155,7 +158,7 @@ function solve()
         apply!(u, dbcs)
     
         for newton_itr in 1:10
-            doassemble!(K, r, cellvalues, dh, PROPS, u, states, states_old, nprops, t)
+            doassemble!(K, r, cellvalues, dh, PROPS, u, states, states_old, nprops, t, newton_itr)
             doassemble_neumann!(r, dh, getfacetset(grid, "right"), facetvalues, traction)
             norm_r = norm(r[Ferrite.free_dofs(dbcs)])
             if norm_r < NEWTON_TOL

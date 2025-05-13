@@ -18,15 +18,16 @@ function doassemble_neumann!(r, dh, facetset, facetvalues, t)
     return r
 end
 
-function compute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, statev::Vector{Float64}, PROPS::Vector{Float64}, nprops::Int64, t::Int64)
+function compute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, statev::Vector{Float64}, PROPS::Vector{Float64}, nprops::Int64, t::Int64, F::Matrix{Float64}, k_inc::Int64)
     stress = zeros(6)
     ddsdde = zeros(6, 6)
     sse, spd, scd, rpl, ddsddt, drplde, drpldt = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     stran = ϵ
-    dstran = dϵ
-    time = [0.0, t]
-    dtime = 1.0
-    temp, dtemp, predef, dpred = 0.0, 0.0, 0.0, 0.0
+    dstran = dϵ 
+    dtime = 0.01
+    current_time = Float64(t) * dtime 
+    time = [current_time, dtime]
+    temp, dtemp, predef, dpred = 0.0, 0.0, [0.0], [0.0]
     cmname = "VEVP"
     ndi, nshr, ntens, nstatv = 3, 3, 6, length(statev)
     coords = zeros(3)
@@ -34,8 +35,9 @@ function compute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, state
     pnewdt = 0.0
     celent = 1.0
     dfgrd0 = Matrix{Float64}(I, 3, 3)
-    dfgrd1 = Matrix{Float64}(I, 3, 3)
-    noel, npt, layer, kspt, kstep, kinc = 1, 1, 1, 1, 1, 1
+    dfgrd1 = F
+    noel, npt, layer, kspt  = 1, 1, 1, 1
+    kstep, kinc = t, k_inc
 
     call_umat(
         stress, statev, ddsdde, sse, spd, scd, rpl, ddsddt, drplde, drpldt,
@@ -88,7 +90,7 @@ function mat2voit(tensor::SymmetricTensor{2, 3, Float64, 6})
     ]
 end
 
-function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, state_old, t)
+function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, state_old, t, newton_itr)
     n_basefuncs = getnbasefunctions(cellvalues)
     reinit!(cellvalues, cell)
 
@@ -97,13 +99,27 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
         ϵ_ = function_symmetric_gradient(cellvalues, q_point, ue)
         ϵ = mat2voit(ϵ_)
 
+        ∇u = function_gradient(cellvalues, q_point, ue)
+
+        F = Matrix{Float64}(I, 3, 3) + ∇u
+        detF = det(F)
+        if detF <= 1e-8  # Tolerance for non-positive or very small determinant
+            println("WARNING: det(F) = $detF at q_point=$q_point, cell=$(cellid(cell))")
+            println("  ∇u = $∇u")
+            println("  ue = $ue")
+        end
+
         # Compute previous strain if you want to use strain increment
-        ϵ_old = state_old[q_point][1:6]  # If you store previous strain, else zeros(6)
-        dϵ = ϵ - ϵ_old
+        dϵ = zeros(6)
 
         # Call UMAT-based stress/tangent
-        σ, D, state[q_point] = compute_stress_tangent(ϵ, dϵ, state_old[q_point], PROPS, nprops, t)
-        state[q_point][1:6] .= σ # Store current stress in state
+        σ, D, state[q_point] = compute_stress_tangent(ϵ, dϵ, state_old[q_point], PROPS, nprops, t, F, newton_itr)
+
+        if any(isnan, D) || any(isinf, D)
+            println("WARNING: DDSDDE (D) from UMAT contains NaN/Inf at q_point=$q_point, cell=$(cellid(cell))")
+            println("  Input F was: $F, det(F) was: $detF")
+            println("  Input state_old[q_point][1:20] was: $(state_old[q_point][1:min(20, length(state_old[q_point]))])")
+        end
 
         dΩ = getdetJdV(cellvalues, q_point)
         for i in 1:n_basefuncs
@@ -120,16 +136,16 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
     symmetrize_lower!(Ke)
 end
 
-function symmetrize_lower!(K)
-    for i in 1:size(K,1)
-        for j in i+1:size(K,1)
-            K[i,j] = K[j,i]
+function symmetrize_lower!(K::AbstractMatrix)
+    @inbounds for j in 1:size(K, 1)
+        for i in j+1:size(K, 1)
+            K[j, i] = K[i, j]
         end
     end
-end;
+end
 
 function doassemble!(K::SparseMatrixCSC, r::Vector, cellvalues::CellValues, dh::DofHandler,
-                     PROPS::Vector{Float64}, u, states, states_old, nprops, t)
+                     PROPS::Vector{Float64}, u, states, states_old, nprops, t, newton_itr)
     assembler = start_assemble(K, r)
     nu = getnbasefunctions(cellvalues)
     re = zeros(nu)     # element residual vector
@@ -144,7 +160,7 @@ function doassemble!(K::SparseMatrixCSC, r::Vector, cellvalues::CellValues, dh::
         state = @view states[:, i]
         state_old = @view states_old[:, i]
         # Call UMAT-based assembly
-        assemble_cell!(ke, re, cell, cellvalues, PROPS, nprops, ue, state, state_old, t)
+        assemble_cell!(ke, re, cell, cellvalues, PROPS, nprops, ue, state, state_old, t, newton_itr)
         assemble!(assembler, eldofs, ke, re)
     end
     return K, r
