@@ -18,7 +18,10 @@ function doassemble_neumann!(r, dh, facetset, facetvalues, t)
     return r
 end
 
-function compute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, statev::Vector{Float64}, PROPS::Vector{Float64}, nprops::Int64, t::Int64)
+
+
+function compute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, statev::Vector{Float64}, PROPS::Vector{Float64}, nprops::Int64, t::Int64; dfgrd1::Matrix{Float64})
+    # Call UMAT
     stress = zeros(6)
     ddsdde = zeros(6, 6)
     sse, spd, scd, rpl, ddsddt, drplde, drpldt = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
@@ -34,7 +37,6 @@ function compute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, state
     pnewdt = 0.0
     celent = 1.0
     dfgrd0 = Matrix{Float64}(I, 3, 3)
-    dfgrd1 = Matrix{Float64}(I, 3, 3)
     noel, npt, layer, kspt, kstep, kinc = 1, 1, 1, 1, 1, 1
 
     call_umat(
@@ -97,13 +99,41 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
         # Compute total strain at this quadrature point
         ϵ_ = function_symmetric_gradient(cellvalues, q_point, ue)
         ϵ = mat2voit(ϵ_)
+        # println("state: ", state )
+        # println("state_old: ", state_old)
+        # println("ϵ: ", ϵ)
 
         # Compute previous strain if you want to use strain increment
         ϵ_old = state_old[q_point][1:6]  # If you store previous strain, else zeros(6)
         dϵ = ϵ - ϵ_old
+        println("dϵ: ", dϵ)
+
+        # Compute the symmetric gradient of the shape function
+        # grad_u = function_gradient(cellvalues, q_point, ue)
+        # F = Matrix{Float64}(I, 3, 3) + grad_u
+        # println("F: ", F)
+
+        # Get reference coordinates of element nodes
+        X = [grid.nodes[cell.nodes[i]] for i in 1:length(cell.nodes)]
+
+        # Get nodal displacements for this cell
+        eldofs = celldofs(cell)
+        ue = u[eldofs]
+        u_nodes = reshape(ue, 3, length(ue) ÷ 3)'  # n_nodes × 3
+
+        # Current coordinates
+        x = X .+ u_nodes  # n_nodes × 3
+
+        # Shape function gradients at this quadrature point
+        dNdxi = Ferrite.shape_gradient(cellvalues, q_point)  # n_nodes × 3
+
+        # Compute deformation gradient for large deformation
+        dxdξ = x' * dNdxi  # 3×3
+        dXdξ = X' * dNdxi  # 3×3
+        F = dxdξ * inv(dXdξ)  # 3×3
 
         # Call UMAT-based stress/tangent
-        σ, D, state[q_point] = compute_stress_tangent(ϵ, dϵ, state_old[q_point], PROPS, nprops, t)
+        σ, D, state[q_point] = compute_stress_tangent(ϵ, dϵ, state_old[q_point], PROPS, nprops, t; dfgrd1 = F)
         state[q_point][1:6] .= σ # Store current stress in state
 
         dΩ = getdetJdV(cellvalues, q_point)
@@ -122,8 +152,8 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
 end
 
 function symmetrize_lower!(K)
-    for i in 1:size(K,1)
-        for j in i+1:size(K,1)
+    for i in size(K, 1)
+        for j in i+1:size(K, 1)
             K[i,j] = K[j,i]
         end
     end

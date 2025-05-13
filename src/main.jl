@@ -136,6 +136,20 @@ function solve()
     states = [zeros(nstatv) for _ in 1:nqp, _ in 1:getncells(grid)]
     states_old = [zeros(nstatv) for _ in 1:nqp, _ in 1:getncells(grid)]
 
+    println(typeof(states))
+    println(typeof(states[1,1]))
+
+    # for state in Iterators.flatten(states)
+    #     state[1] = 1.0
+    #     state[2] = 1.0
+    #     state[3] = 1.0
+    # end
+    # for state in Iterators.flatten(states_old)
+    #     state[1] = 1.0
+    #     state[2] = 1.0
+    #     state[3] = 1.0
+    # end
+
     # Newton-Raphson loop
     n_timesteps = 10
     u_max = zeros(n_timesteps)

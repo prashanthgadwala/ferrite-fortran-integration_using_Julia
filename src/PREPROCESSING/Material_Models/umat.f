@@ -258,30 +258,34 @@ C     !--------------------------------------------------------------
          g(7)          =PROPS(49)
          g(8)          =PROPS(50)
 
-        PRINT *, 'GG_inf=', GG_inf, 'KK_inf=', KK_inf
-        PRINT *, 'GG=', GG
-        PRINT *, 'KK=', KK
-        PRINT *, 'g=', g
-        PRINT *, 'k=', k
+        !PRINT *, 'GG_inf=', GG_inf, 'KK_inf=', KK_inf
+        !PRINT *, 'GG=', GG
+        !PRINT *, 'KK=', KK
+        !PRINT *, 'g=', g
+        !PRINT *, 'k=', k
 
          ! Compute determinant of F (Deformation Gradient)
          CALL determinant(DFGRD1(:,:), J)
         ! Calculate VE Right Cauchy Green Tensor (C_ve) at trial State
-         PRINT *, 'DFGRD1 = ', DFGRD1
+
          CALL vevpSplit(DFGRD1(:, :), F_vp_n(:, :),
      1                  F_ve_tr(:, :), C_ve_tr(:, :))
+         !PRINT *, 'DFGRD1 = ', DFGRD1
 
          ! Approximate VE log Strain (power series) at trial state 
          D_ve_tr(:,:) = C_ve_tr(:, :) - I_mat(:,:)
          CALL approx_log(D_ve_tr(:,:), order, E_ve_tr(:, :),
      1               dlogC_ve_tr(:,:,:,:))
          E_ve_tr(:, :) = 0.5D0 * E_ve_tr(:, :)
+         !PRINT *, 'E_ve_tr = ', E_ve_tr
 
          ! Calculate the corotated kirchoff stress at trial state along 
          ! with VE internal variables
+         PRINT *, 'DFGRD1 = ', DFGRD1
          CALL vePredictor_log(E_ve_tr(:,:), E_ve_n(:,:), AA_n(:,:,:),
      1             BB_n(:), DTIME, PROPS, NPROPS, AA_tr(:,:,:),
      2             BB_tr(:), GGe, KKe, kappa_tr(:,:))
+         !PRINT *, 'kappa_tr = ', kappa_tr
 
          ! Check yielding at trial state => gma = gma_n,  u=1, v=1, GAMMA = 0
          ! Get phi_e_tr, phi_p_tr
@@ -348,6 +352,7 @@ C     !--------------------------------------------------------------
           ! Calculate kirchoff stress
           CALL mat2dot(F_ve_tr(:, :), S_tr(:, :), temp1(:, :))
           CALL mat2dotT(temp1(:, :), F_ve_tr(:, :), tau_tr(:, :))
+          !PRINT *, 'VEVP (trial): TAU_TR = ', tau_tr          
 
           ! Return cauchy stress for abaqus
           STRESS(1) = (1.D0 / J) * tau_tr(1, 1)
@@ -356,9 +361,9 @@ C     !--------------------------------------------------------------
           STRESS(4) = (1.D0 / J) * tau_tr(1, 2)
           STRESS(5) = (1.D0 / J) * tau_tr(1, 3)
           STRESS(6) = (1.D0 / J) * tau_tr(2, 3)
-          PRINT *, 'VEVP (trial): TAU_TR = ', tau_tr
-          PRINT *, 'VEVP (trial): STRAIN IN = ', STRAN
-          PRINT *, 'VEVP (trial): STRESS OUT = ', STRESS
+
+          !PRINT *, 'VEVP (trial): STRAIN IN = ', STRAN
+          !PRINT *, 'VEVP (trial): STRESS OUT = ', STRESS
 
           ! Update internal variables for trial state. No need to update VP internal variables
           CALL mat2voit(E_ve_tr(:,:),STATEV(10:18))
@@ -441,8 +446,12 @@ C     !--------------------------------------------------------------
           ! Calculate 2PK stress at corrected state
           CALL mat24ddot(kappa(:, :), dlogC_ve(:, :, :, :), S(:, :))
           ! Calculate kirchoff stress at corrected state
+
+          !PRINT *, 'VEVP (corr): TAU = ', tau
           CALL mat2dot(F_ve(:, :), S(:, :), temp2(:, :))
           CALL mat2dotT(temp2(:, :), F_ve(:, :), tau(:, :))
+          
+
 
           ! Return cauchy stress for abaqus
           STRESS(1) = (1.D0 / J) * tau(1, 1)
@@ -451,9 +460,9 @@ C     !--------------------------------------------------------------
           STRESS(4) = (1.D0 / J) * tau(1, 2)
           STRESS(5) = (1.D0 / J) * tau(1, 3)
           STRESS(6) = (1.D0 / J) * tau(2, 3)
-          PRINT *, 'VEVP (corr): TAU = ', tau
-          PRINT *, 'VEVP (corr): STRAIN IN = ', STRAN
-          PRINT *, 'VEVP (corr): STRESS OUT = ', STRESS
+
+          !PRINT *, 'VEVP (corr): STRAIN IN = ', STRAN
+          !PRINT *, 'VEVP (corr): STRESS OUT = ', STRESS
 
           ! Update kin hardening variable for the corrected state
           CALL hardn(PROPS, NPROPS, gma_0, gma_n, 
@@ -1337,6 +1346,10 @@ C     !--------------------------------------------------------------
          END DO
 
          kappa(:, :) = dev_kappa(:, :) + p * I_mat(:, :)
+
+        !PRINT *, 'vePredictor_log: dev_kappa = ', dev_kappa
+        !PRINT *, 'vePredictor_log: p = ', p
+        !PRINT *, 'vePredictor_log: kappa = ', kappa
 
             RETURN
         END SUBROUTINE vePredictor_log
