@@ -155,18 +155,59 @@ function solve()
         t = timestep 
         traction = Vec((0.0, 0.0, traction_magnitude[timestep]))
         update!(dbcs, t)
-        apply!(u, dbcs)
+        apply!(u, dbcs) 
     
-        for newton_itr in 1:10
+        norm_r_initial = 0.0
+        for newton_itr in 1:10 
+            fill!(K.nzval, 0.0) 
+            fill!(r, 0.0)       
+            
             doassemble!(K, r, cellvalues, dh, PROPS, u, states, states_old, nprops, t, newton_itr)
-            doassemble_neumann!(r, dh, getfacetset(grid, "right"), facetvalues, traction)
-            norm_r = norm(r[Ferrite.free_dofs(dbcs)])
+            doassemble_neumann!(r, dh, getfacetset(grid, "right"), facetvalues, traction) 
+            
+            apply_zero!(K, r, dbcs) 
+
+            current_free_dofs = Ferrite.free_dofs(dbcs)
+            if isempty(current_free_dofs) && norm(r) > NEWTON_TOL 
+                println("Warning: System might be fully constrained but residual is non-zero.")
+            end
+
+            norm_r = norm(r[current_free_dofs]) 
+
+            if newton_itr == 1
+                norm_r_initial = norm_r
+            end
+            @printf "Timestep: %d, Newton Iteration: %d, Residual Norm: %.3e\n" t newton_itr norm_r
+
             if norm_r < NEWTON_TOL
+                @printf "  Converged in %d Newton iterations.\n" newton_itr
                 break
             end
-            apply_zero!(K, r, dbcs)
-            Δu = Symmetric(K) \ r
-            u -= Δu
+            if newton_itr > 1 && norm_r > norm_r_initial * 1e2 
+                    @printf "  Warning: Residual norm increased significantly. Diverging?\n"
+            end
+            if newton_itr == 10
+                    @printf "  Warning: Max Newton iterations reached without convergence.\n"
+            end
+
+            if any(isnan, K.nzval)
+                println("ERROR: NaN found in K before solve! Aborting Newton loop.")
+                error("NaN in K") 
+            end
+            
+            Δu_vec = zeros(length(u))
+            try
+                Δu_vec[current_free_dofs] = Symmetric(K[current_free_dofs, current_free_dofs]) \ r[current_free_dofs]
+            catch e
+                if isa(e, SingularException)
+                    println("ERROR: SingularException during solve. Aborting Newton loop for timestep $t.")
+                    error("SingularException in solve") 
+                else
+                    rethrow(e)
+                end
+            end
+            u -= Δu_vec 
+            apply!(u, dbcs) 
         end
         states_old .= states
         u_max[timestep] = maximum(abs, u)
