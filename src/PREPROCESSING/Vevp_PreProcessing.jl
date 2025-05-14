@@ -88,6 +88,11 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
     #     push!(node_ids, (eldofs[i]-1) ÷ 3 + 1)
     # end
     
+    eldofs = celldofs(cell)  # 81 DOFs (27 nodes × 3 DOFs)
+    node_ids = Int[]
+    for i in 1:3:length(eldofs)
+        push!(node_ids, (eldofs[i]-1) ÷ 3 + 1)
+    end
     
     # Get reference coordinates for the element's nodes
     X_nodes_mat = hcat(Xnode[node_ids]...)'  # N_nodes x 3
@@ -95,11 +100,16 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
     u_nodes = reshape(ue, 3, :)'
     x_nodes = X_nodes_mat .+ u_nodes
 
+    @show node_ids
+    @show X_nodes_mat
+    @show u_nodes
+    @show x_nodes
+
     for q_point in 1:getnquadpoints(cellvalues)
         # Compute total strain at this quadrature point
         ϵ = function_symmetric_gradient(cellvalues, q_point, ue)
         # Compute previous strain if you want to use strain increment
-        ϵ_old = state_old[q_point][1:6]  # If you store previous strain, else zeros(6)
+        ϵ_old = zeros(6)  # If you store previous strain, else zeros(6)
         dϵ = ϵ - ϵ_old
 
         dNdξ = shape_gradient(cellvalues, q_point)
