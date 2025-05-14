@@ -96,6 +96,8 @@ function solve()
     grid = generate_grid(Hexahedron, nels, P1, P2)
     interpolation = Lagrange{RefHexahedron, 2}()^3
 
+    Xnode = [Ferrite.get_node_coordinate(grid, i) for i in 1:getnnodes(grid)]
+
     # Preprocessing
     dh = create_dofhandler(grid, interpolation)
     dbcs = create_bc(dh, grid)
@@ -117,7 +119,7 @@ function solve()
     # Newton-Raphson loop
     n_timesteps = 10
     u_max = zeros(n_timesteps)
-    traction_magnitude = -1.e7 * range(0.5, 1.0, length=n_timesteps)
+    traction_magnitude = 1.e7 * range(0.5, 1.0, length=n_timesteps)
     NEWTON_TOL = 1e-6
 
     for timestep in 1:n_timesteps
@@ -127,7 +129,7 @@ function solve()
         apply!(u, dbcs)
     
         for newton_itr in 1:10
-            doassemble!(K, r, cellvalues, dh, PROPS, u, states, states_old, nprops, t)
+            doassemble!(K, r, cellvalues, dh, PROPS, u, states, states_old, nprops, t, Xnode)
             doassemble_neumann!(r, dh, getfacetset(grid, "right"), facetvalues, traction)
             norm_r = norm(r[Ferrite.free_dofs(dbcs)])
             if norm_r < NEWTON_TOL

@@ -18,7 +18,7 @@ function doassemble_neumann!(r, dh, facetset, facetvalues, t)
     return r
 end
 
-function compute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, statev::Vector{Float64}, PROPS::Vector{Float64}, nprops::Int, t::Float64)
+function compute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, statev::Vector{Float64}, PROPS::Vector{Float64}, nprops::Int, t::Float64, F::Matrix{Float64})
     stress = zeros(6)
     ddsdde = zeros(6, 6)
     sse, spd, scd, rpl, ddsddt, drplde, drpldt = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
@@ -34,7 +34,7 @@ function compute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, state
     pnewdt = 0.0
     celent = 1.0
     dfgrd0 = Matrix{Float64}(I, 3, 3)
-    dfgrd1 = Matrix{Float64}(I, 3, 3)
+    dfgrd1 = F
     noel, npt, layer, kspt, kstep, kinc = 1, 1, 1, 1, 1, 1
 
     call_umat(
@@ -76,9 +76,24 @@ function create_bc(dh, grid)
     return dbcs
 end
 
-function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, state_old, t)
+function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, state_old, t, Xnode, dh)
     n_basefuncs = getnbasefunctions(cellvalues)
     reinit!(cellvalues, cell)
+
+    # # eldofs = celldofs(cell) gives the global DOF indices for the element
+    # eldofs = celldofs(dh, cell)
+    # # For a 3D vector field, every node has 3 DOFs, so:
+    # node_ids = Int[]
+    # for i in 1:3:length(eldofs)
+    #     push!(node_ids, (eldofs[i]-1) ÷ 3 + 1)
+    # end
+    
+    
+    # Get reference coordinates for the element's nodes
+    X_nodes_mat = hcat(Xnode[node_ids]...)'  # N_nodes x 3
+    
+    u_nodes = reshape(ue, 3, :)'
+    x_nodes = X_nodes_mat .+ u_nodes
 
     for q_point in 1:getnquadpoints(cellvalues)
         # Compute total strain at this quadrature point
@@ -87,8 +102,16 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
         ϵ_old = state_old[q_point][1:6]  # If you store previous strain, else zeros(6)
         dϵ = ϵ - ϵ_old
 
+        dNdξ = shape_gradient(cellvalues, q_point)
+        J_xξ = x_nodes' * dNdξ
+        J_Xξ = X_nodes_mat' * dNdξ
+        F = J_xξ * inv(J_Xξ)
+
+
         # Call UMAT-based stress/tangent
-        σ, D, state[q_point] = compute_stress_tangent(collect(ϵ), collect(dϵ), state_old[q_point], PROPS, nprops, t)
+        σ, D, updated_state = compute_stress_tangent(collect(ϵ), collect(dϵ), state_old[q_point], PROPS, nprops, t, F)
+        updated_state[101:106] = σ
+        state[q_point] = updated_state
 
         dΩ = getdetJdV(cellvalues, q_point)
         for i in 1:n_basefuncs
@@ -112,7 +135,7 @@ function symmetrize_lower!(K)
 end;
 
 function doassemble!(K::SparseMatrixCSC, r::Vector, cellvalues::CellValues, dh::DofHandler,
-                     PROPS::Vector{Float64}, u, states, states_old, nprops, t)
+                     PROPS::Vector{Float64}, u, states, states_old, nprops, t, Xnode)
     assembler = start_assemble(K, r)
     nu = getnbasefunctions(cellvalues)
     re = zeros(nu)     # element residual vector
@@ -127,7 +150,7 @@ function doassemble!(K::SparseMatrixCSC, r::Vector, cellvalues::CellValues, dh::
         state = @view states[:, i]
         state_old = @view states_old[:, i]
         # Call UMAT-based assembly
-        assemble_cell!(ke, re, cell, cellvalues, PROPS, nprops, ue, state, state_old, t)
+        assemble_cell!(ke, re, cell, cellvalues, PROPS, nprops, ue, state, state_old, t, Xnode, dh)
         assemble!(assembler, eldofs, ke, re)
     end
     return K, r
