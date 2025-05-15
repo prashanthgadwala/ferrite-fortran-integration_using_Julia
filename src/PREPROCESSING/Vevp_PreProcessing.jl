@@ -80,6 +80,18 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
     n_basefuncs = getnbasefunctions(cellvalues)
     reinit!(cellvalues, cell)
 
+    coords   = getcoordinates(cell)          # vector of Vecs (node coordinates)
+    @show coords
+    @show size(coords)
+    X_nodes_mat   = hcat(coords...)'                   # (n_nodes × dim) reference coordinates
+    @show X_nodes_mat
+    @show size(X_nodes_mat)
+    @show ue
+    @show size(ue)
+    u_mat    = reshape(ue, 3, :)'            # (n_nodes × 3) for 3D
+    x_nodes  = X_nodes_mat .+ u_mat                     # (n_nodes × 3) current coordinates
+
+
     # # eldofs = celldofs(cell) gives the global DOF indices for the element
     # eldofs = celldofs(dh, cell)
     # # For a 3D vector field, every node has 3 DOFs, so:
@@ -87,39 +99,62 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
     # for i in 1:3:length(eldofs)
     #     push!(node_ids, (eldofs[i]-1) ÷ 3 + 1)
     # end
-    
-    eldofs = celldofs(cell)  # 81 DOFs (27 nodes × 3 DOFs)
-    node_ids = Int[]
-    for i in 1:3:length(eldofs)
-        push!(node_ids, (eldofs[i]-1) ÷ 3 + 1)
-    end
-    
-    # Get reference coordinates for the element's nodes
-    X_nodes_mat = hcat(Xnode[node_ids]...)'  # N_nodes x 3
-    
-    u_nodes = reshape(ue, 3, :)'
-    x_nodes = X_nodes_mat .+ u_nodes
 
-    @show node_ids
-    @show X_nodes_mat
-    @show u_nodes
-    @show x_nodes
+
+    # node_ids = celldofs(cell)
+    # # Get reference coordinates for the element's nodes
+    # X_nodes_mat = hcat(Xnode[node_ids]...)'  # N_nodes x 3
+
+    # for i in 1:10
+    #     println(X_nodes_mat[i, :])
+    # end
+
+
+    # # node_ids = Ferrite.get_node_ids(cell.reference)  # or Ferrite.cellnodes(cell.ref)
+    # # X_nodes_mat = hcat(Xnode[node_ids]...)'    # (27, 3)
+    # X_nodes_mat = Ferrite.getcoordinates(cell)  # (27, 3) for Hex27
+    # u_nodes = reshape(ue, 3, :)'               # (27, 3)
+    # x_nodes = X_nodes_mat .+ u_nodes           # (27, 3)
+    # @show X_nodes_mat
+    # @show ue
+
+    # u_nodes = reshape(ue, 3, :)'
+    # x_nodes = X_nodes_mat .+ u_nodes
+
+    # x_nodes = X_nodes_mat .+ ue
+
+    # @show node_ids
+    # @show X_nodes_mat
+    # @show ue
+    # @show x_nodes
+
+
+
+
 
     for q_point in 1:getnquadpoints(cellvalues)
         # Compute total strain at this quadrature point
         ϵ = function_symmetric_gradient(cellvalues, q_point, ue)
         # Compute previous strain if you want to use strain increment
-        ϵ_old = zeros(6)  # If you store previous strain, else zeros(6)
-        dϵ = ϵ - ϵ_old
+        dϵ = zeros(6)
 
-        dNdξ = shape_gradient(cellvalues, q_point)
+        nbase = getnbasefunctions(cellvalues)
+
+        dNdξ_ = [shape_gradient(cellvalues, q_point, i) for i in 1:nbase]
+        dNdξ = hcat(dNdξ_...)'
         J_xξ = x_nodes' * dNdξ
+        @show J_xξ
         J_Xξ = X_nodes_mat' * dNdξ
+        @show J_Xξ
         F = J_xξ * inv(J_Xξ)
+        @show size(dNdξ)
+        @show size(X_nodes_mat)
+        @show size(J_Xξ)     
+        @show J_Xξ
 
 
         # Call UMAT-based stress/tangent
-        σ, D, updated_state = compute_stress_tangent(collect(ϵ), collect(dϵ), state_old[q_point], PROPS, nprops, t, F)
+        σ, D, updated_state = compute_stress_tangent(ϵ, dϵ, state_old[q_point], PROPS, nprops, t, F)
         updated_state[101:106] = σ
         state[q_point] = updated_state
 
@@ -132,6 +167,8 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
                 Ke[i, j] += δϵ' * D * Δϵ * dΩ
             end
         end
+
+
     end
     symmetrize_lower!(Ke)
 end
