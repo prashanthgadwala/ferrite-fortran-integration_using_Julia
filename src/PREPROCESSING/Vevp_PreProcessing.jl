@@ -153,7 +153,6 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
         end
 
         @show size(shape_gradient(cellvalues, q_point, 1))
-        n_basefuncs = getnbasefunctions(cellvalues)
         dNdξ = hcat([shape_gradient(cellvalues, q_point, i)[:,1] for i in 1:length(node_ids)]...)'
         @show size(dNdξ)
         J_xξ = x_nodes' * dNdξ
@@ -169,16 +168,18 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
 
 
         # Call UMAT-based stress/tangent
-        σ, D, updated_state = compute_stress_tangent(collect(ϵ), dϵ, state_old[q_point], PROPS, nprops, t, F)
+        σ, D, updated_state = compute_stress_tangent(vec(collect(ϵ)), dϵ, state_old[q_point], PROPS, nprops, t, F)
         updated_state[101:106] = σ
         state[q_point] = updated_state
 
         dΩ = getdetJdV(cellvalues, q_point)
         for i in 1:n_basefuncs
-            δϵ = shape_symmetric_gradient(cellvalues, q_point, i)
-            re[i] += (δϵ ⋅ σ) * dΩ
+            δϵ_ = shape_symmetric_gradient(cellvalues, q_point, i)
+            δϵ= tensor_to_voigt(δϵ_)
+            re[i] += (tensor_to_voigt(δϵ) ⋅ σ) * dΩ
             for j in 1:i
-                Δϵ = shape_symmetric_gradient(cellvalues, q_point, j)
+                Δϵ_ = shape_symmetric_gradient(cellvalues, q_point, j)
+                Δϵ = tensor_to_voigt(Δϵ_)
                 Ke[i, j] += δϵ' * D * Δϵ * dΩ
             end
         end
@@ -186,6 +187,23 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
 
     end
     symmetrize_lower!(Ke)
+end
+
+
+function tensor_to_voigt(ϵ::AbstractMatrix)
+    # Assumes 3x3 symmetric tensor
+    return [
+        ϵ[1,1],
+        ϵ[2,2],
+        ϵ[3,3],
+        ϵ[1,2],
+        ϵ[1,3],
+        ϵ[2,3]
+    ]
+end
+
+function tensor_to_voigt(ϵ::Vector{Float64})
+    return ϵ
 end
 
 function symmetrize_lower!(K)
