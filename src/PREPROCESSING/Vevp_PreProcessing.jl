@@ -18,7 +18,7 @@ function doassemble_neumann!(r, dh, facetset, facetvalues, t)
     return r
 end
 
-function compute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, statev::Vector{Float64}, PROPS::Vector{Float64}, nprops::Int, t::Float64, F::Matrix{Float64})
+function compute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, statev::Vector{Float64}, PROPS::Vector{Float64}, nprops::Int, t::Int64, F::Matrix{Float64})
     stress = zeros(6)
     ddsdde = zeros(6, 6)
     sse, spd, scd, rpl, ddsddt, drplde, drpldt = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
@@ -80,16 +80,25 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
     n_basefuncs = getnbasefunctions(cellvalues)
     reinit!(cellvalues, cell)
 
-    coords   = getcoordinates(cell)          # vector of Vecs (node coordinates)
-    @show coords
-    @show size(coords)
-    X_nodes_mat   = hcat(coords...)'                   # (n_nodes × dim) reference coordinates
+    node_ids = getnodes(cell)  # global node indices for this cell
+
+    X_nodes = [dh.grid.nodes[i].x for i in node_ids]  # reference coordinates as Vecs
+    X_nodes_mat = hcat(X_nodes...)'  # (n_nodes × 3) matrix, each row is a node
+    u_mat = reshape(ue, 3, :)'  # (n_nodes × 3) for 3D
+    x_nodes = X_nodes_mat .+ u_mat  # (n_nodes × 3) current coordinates#ä
+    @show node_ids
     @show X_nodes_mat
-    @show size(X_nodes_mat)
-    @show ue
-    @show size(ue)
-    u_mat    = reshape(ue, 3, :)'            # (n_nodes × 3) for 3D
-    x_nodes  = X_nodes_mat .+ u_mat                     # (n_nodes × 3) current coordinates
+
+
+    # node_ids = Ferrite.get_cell_node_ids(cell)  # or similar, depending on Ferrite version
+    # X_nodes_mat   = hcat(node_ids...)' 
+    # X_nodes_mat = reshape(X_nodes_mat, 3, :)'                  # (n_nodes × dim) reference coordinates
+    # @show X_nodes_mat
+    # @show size(X_nodes_mat)
+    # @show ue
+    # @show size(ue)
+    # u_mat    = reshape(ue, 3, :)'            # (n_nodes × 3) for 3D
+    # x_nodes  = X_nodes_mat .+ u_mat                     # (n_nodes × 3) current coordinates
 
 
     # # eldofs = celldofs(cell) gives the global DOF indices for the element
@@ -138,14 +147,20 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
         # Compute previous strain if you want to use strain increment
         dϵ = zeros(6)
 
-        nbase = getnbasefunctions(cellvalues)
+        for i in 1:length(node_ids)
+            grad = shape_gradient(cellvalues, q_point, i)
+            println("q_point=$q_point, i=$i, grad=", grad, ", size=", size(grad))
+        end
 
-        dNdξ_ = [shape_gradient(cellvalues, q_point, i) for i in 1:nbase]
-        dNdξ = hcat(dNdξ_...)'
+        @show size(shape_gradient(cellvalues, q_point, 1))
+        n_basefuncs = getnbasefunctions(cellvalues)
+        dNdξ = hcat([shape_gradient(cellvalues, q_point, i)[:,1] for i in 1:length(node_ids)]...)'
+        @show size(dNdξ)
         J_xξ = x_nodes' * dNdξ
         @show J_xξ
         J_Xξ = X_nodes_mat' * dNdξ
         @show J_Xξ
+        @show det(J_Xξ)
         F = J_xξ * inv(J_Xξ)
         @show size(dNdξ)
         @show size(X_nodes_mat)
@@ -154,7 +169,7 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
 
 
         # Call UMAT-based stress/tangent
-        σ, D, updated_state = compute_stress_tangent(ϵ, dϵ, state_old[q_point], PROPS, nprops, t, F)
+        σ, D, updated_state = compute_stress_tangent(collect(ϵ), dϵ, state_old[q_point], PROPS, nprops, t, F)
         updated_state[101:106] = σ
         state[q_point] = updated_state
 

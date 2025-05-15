@@ -87,14 +87,14 @@ function solve()
 
     # Geometry and mesh
     L = 10.0 # beam length [m]
-    w = 1.0  # beam width [m]
-    h = 1.0  # beam height [m]
+    w = 4.0  # beam width [m]
+    h = 4.0  # beam height [m]
     n = 2
     nels = (10n, n, 2n) # Number of elements in each spatial direction
     P1 = Vec((0.0, 0.0, 0.0))  # Start point for geometry
     P2 = Vec((L, w, h))        # End point for geometry
     grid = generate_grid(Hexahedron, nels, P1, P2)
-    interpolation = Lagrange{RefHexahedron, 2}()^3
+    interpolation = Lagrange{RefHexahedron, 1}()^3
 
     Xnode = [Ferrite.get_node_coordinate(grid, i) for i in 1:getnnodes(grid)]
 
