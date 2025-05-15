@@ -87,14 +87,17 @@ function solve()
 
     # Geometry and mesh
     L = 10.0 # beam length [m]
-    w = 4.0  # beam width [m]
-    h = 4.0  # beam height [m]
+    w = 1.0  # beam width [m]
+    h = 1.0  # beam height [m]
     n = 2
     nels = (10n, n, 2n) # Number of elements in each spatial direction
     P1 = Vec((0.0, 0.0, 0.0))  # Start point for geometry
     P2 = Vec((L, w, h))        # End point for geometry
     grid = generate_grid(Hexahedron, nels, P1, P2)
     interpolation = Lagrange{RefHexahedron, 1}()^3
+    println("Number of elements: ", getncells(grid))
+    println("Number of nodes: ", getnnodes(grid))
+    println("Number of right facets: ", length(getfacetset(grid, "right")))
 
     Xnode = [Ferrite.get_node_coordinate(grid, i) for i in 1:getnnodes(grid)]
 
@@ -119,7 +122,7 @@ function solve()
     # Newton-Raphson loop
     n_timesteps = 10
     u_max = zeros(n_timesteps)
-    traction_magnitude = 1.e7 * range(0.5, 1.0, length=n_timesteps)
+    traction_magnitude = 1.e3 * range(0.5, 1.0, length=n_timesteps)
     NEWTON_TOL = 1e-6
 
     for timestep in 1:n_timesteps
@@ -138,6 +141,8 @@ function solve()
             apply_zero!(K, r, dbcs)
             Δu = Symmetric(K) \ r
             u -= Δu
+            println("Max displacement: ", maximum(abs, u))
+            println("Residual norm: ", norm_r)
         end
         states_old .= states
         u_max[timestep] = maximum(abs, u)
@@ -146,6 +151,7 @@ function solve()
     # Postprocessing
     postprocess(grid, dh, states, PROPS, u)
     plot_traction_displacement(u_max, traction_magnitude)
+
 end
 
 solve()

@@ -86,8 +86,8 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
     X_nodes_mat = hcat(X_nodes...)'  # (n_nodes × 3) matrix, each row is a node
     u_mat = reshape(ue, 3, :)'  # (n_nodes × 3) for 3D
     x_nodes = X_nodes_mat .+ u_mat  # (n_nodes × 3) current coordinates#ä
-    @show node_ids
-    @show X_nodes_mat
+    # @show node_ids
+    # @show X_nodes_mat
 
 
     # node_ids = Ferrite.get_cell_node_ids(cell)  # or similar, depending on Ferrite version
@@ -147,39 +147,45 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
         # Compute previous strain if you want to use strain increment
         dϵ = zeros(6)
 
-        for i in 1:length(node_ids)
-            grad = shape_gradient(cellvalues, q_point, i)
-            println("q_point=$q_point, i=$i, grad=", grad, ", size=", size(grad))
-        end
+        # for i in 1:length(node_ids)
+        #     grad = shape_gradient(cellvalues, q_point, i)
+        #     println("q_point=$q_point, i=$i, grad=", grad, ", size=", size(grad))
+        # end
 
-        @show size(shape_gradient(cellvalues, q_point, 1))
+        # @show size(shape_gradient(cellvalues, q_point, 1))
         dNdξ = hcat([shape_gradient(cellvalues, q_point, i)[:,1] for i in 1:length(node_ids)]...)'
-        @show size(dNdξ)
+        # @show size(dNdξ)
         J_xξ = x_nodes' * dNdξ
-        @show J_xξ
+        # @show J_xξ
         J_Xξ = X_nodes_mat' * dNdξ
-        @show J_Xξ
-        @show det(J_Xξ)
+        # @show J_Xξ
+        # @show det(J_Xξ)
+        detJ = det(J_Xξ)
+        if abs(detJ) < 1e-10
+            @warn "Singular Jacobian!" cell=cellid(cell) q_point=q_point detJ=detJ
+            @show cellid(cell), q_point, detJ
+            @show X_nodes_mat
+        end
         F = J_xξ * inv(J_Xξ)
-        @show size(dNdξ)
-        @show size(X_nodes_mat)
-        @show size(J_Xξ)     
-        @show J_Xξ
+        # @show size(dNdξ)
+        # @show size(X_nodes_mat)
+        # @show size(J_Xξ)     
+        # @show J_Xξ
 
 
         # Call UMAT-based stress/tangent
         σ, D, updated_state = compute_stress_tangent(vec(collect(ϵ)), dϵ, state_old[q_point], PROPS, nprops, t, F)
         updated_state[101:106] = σ
         state[q_point] = updated_state
-
+        
         dΩ = getdetJdV(cellvalues, q_point)
         for i in 1:n_basefuncs
             δϵ_ = shape_symmetric_gradient(cellvalues, q_point, i)
-            δϵ= tensor_to_voigt(δϵ_)
-            re[i] += (tensor_to_voigt(δϵ) ⋅ σ) * dΩ
+            δϵ = tensor_to_voigt6(δϵ_)
+            re[i] += (δϵ ⋅ σ) * dΩ
             for j in 1:i
                 Δϵ_ = shape_symmetric_gradient(cellvalues, q_point, j)
-                Δϵ = tensor_to_voigt(Δϵ_)
+                Δϵ = tensor_to_voigt6(Δϵ_)
                 Ke[i, j] += δϵ' * D * Δϵ * dΩ
             end
         end
@@ -190,21 +196,29 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
 end
 
 
-function tensor_to_voigt(ϵ::AbstractMatrix)
-    # Assumes 3x3 symmetric tensor
+# 3x3 matrix to 9-component Voigt vector (Fortran order)
+function tensor_to_voigt(mat::AbstractMatrix)
     return [
-        ϵ[1,1],
-        ϵ[2,2],
-        ϵ[3,3],
-        ϵ[1,2],
-        ϵ[1,3],
-        ϵ[2,3]
+        mat[1,1], mat[2,2], mat[3,3],
+        mat[1,2], mat[1,3], mat[2,3],
+        mat[2,1], mat[3,1], mat[3,2]
     ]
 end
 
-function tensor_to_voigt(ϵ::Vector{Float64})
-    return ϵ
+# 9-component Voigt vector to 3x3 matrix (Fortran order)
+function voigt_to_tensor(voit::AbstractVector)
+    return [
+        voit[1] voit[4] voit[5];
+        voit[4] voit[2] voit[6];
+        voit[5] voit[6] voit[3]
+    ]
 end
+
+function tensor_to_voigt6(mat::AbstractMatrix)
+    # For symmetric 3x3 tensor: [11, 22, 33, 12, 13, 23]
+    return [mat[1,1], mat[2,2], mat[3,3], mat[1,2], mat[1,3], mat[2,3]]
+end
+
 
 function symmetrize_lower!(K)
     for i in 1:size(K,1)
