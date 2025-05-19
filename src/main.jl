@@ -125,20 +125,30 @@ function solve()
     traction_magnitude = 1.e3 * range(0.5, 1.0, length=n_timesteps)
     NEWTON_TOL = 1e-6
 
+    debug_compare_models(PROPS)
+
     for timestep in 1:n_timesteps
         t = timestep
         traction = Vec((0.0, 0.0, traction_magnitude[timestep]))
+        newton_itr = -1
+        print("\n Time step @time = $timestep:\n")
         update!(dbcs, t)
         apply!(u, dbcs)
     
-        for newton_itr in 1:10
+        while true; newton_itr += 1
             doassemble!(K, r, cellvalues, dh, PROPS, u, states, states_old, nprops, t, Xnode)
             doassemble_neumann!(r, dh, getfacetset(grid, "right"), facetvalues, traction)
             norm_r = norm(r[Ferrite.free_dofs(dbcs)])
+            print("Iteration: $newton_itr \tresidual: $(@sprintf("%.8f", norm_r))\n")
             if norm_r < NEWTON_TOL
                 break
             end
+            println("r before apply_zero! at constrained DOFs: ", count(iszero, r))
+            Rbefore = r[Ferrite.free_dofs(dbcs)]
             apply_zero!(K, r, dbcs)
+            Rafter = r[Ferrite.free_dofs(dbcs)]
+            println("r after apply_zero! at constrained DOFs: ", count(iszero, r))
+            println("checking if there is a change in R: ", all(Rbefore .== Rafter))
             Δu = Symmetric(K) \ r
             u -= Δu
             println("Max displacement: ", maximum(abs, u))

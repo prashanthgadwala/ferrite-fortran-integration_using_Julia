@@ -86,59 +86,6 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
     X_nodes_mat = hcat(X_nodes...)'  # (n_nodes × 3) matrix, each row is a node
     u_mat = reshape(ue, 3, :)'  # (n_nodes × 3) for 3D
     x_nodes = X_nodes_mat .+ u_mat  # (n_nodes × 3) current coordinates#ä
-    # @show node_ids
-    # @show X_nodes_mat
-
-
-    # node_ids = Ferrite.get_cell_node_ids(cell)  # or similar, depending on Ferrite version
-    # X_nodes_mat   = hcat(node_ids...)' 
-    # X_nodes_mat = reshape(X_nodes_mat, 3, :)'                  # (n_nodes × dim) reference coordinates
-    # @show X_nodes_mat
-    # @show size(X_nodes_mat)
-    # @show ue
-    # @show size(ue)
-    # u_mat    = reshape(ue, 3, :)'            # (n_nodes × 3) for 3D
-    # x_nodes  = X_nodes_mat .+ u_mat                     # (n_nodes × 3) current coordinates
-
-
-    # # eldofs = celldofs(cell) gives the global DOF indices for the element
-    # eldofs = celldofs(dh, cell)
-    # # For a 3D vector field, every node has 3 DOFs, so:
-    # node_ids = Int[]
-    # for i in 1:3:length(eldofs)
-    #     push!(node_ids, (eldofs[i]-1) ÷ 3 + 1)
-    # end
-
-
-    # node_ids = celldofs(cell)
-    # # Get reference coordinates for the element's nodes
-    # X_nodes_mat = hcat(Xnode[node_ids]...)'  # N_nodes x 3
-
-    # for i in 1:10
-    #     println(X_nodes_mat[i, :])
-    # end
-
-
-    # # node_ids = Ferrite.get_node_ids(cell.reference)  # or Ferrite.cellnodes(cell.ref)
-    # # X_nodes_mat = hcat(Xnode[node_ids]...)'    # (27, 3)
-    # X_nodes_mat = Ferrite.getcoordinates(cell)  # (27, 3) for Hex27
-    # u_nodes = reshape(ue, 3, :)'               # (27, 3)
-    # x_nodes = X_nodes_mat .+ u_nodes           # (27, 3)
-    # @show X_nodes_mat
-    # @show ue
-
-    # u_nodes = reshape(ue, 3, :)'
-    # x_nodes = X_nodes_mat .+ u_nodes
-
-    # x_nodes = X_nodes_mat .+ ue
-
-    # @show node_ids
-    # @show X_nodes_mat
-    # @show ue
-    # @show x_nodes
-
-
-
 
 
     for q_point in 1:getnquadpoints(cellvalues)
@@ -147,42 +94,25 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
         # Compute previous strain if you want to use strain increment
         dϵ = zeros(6)
 
-        # for i in 1:length(node_ids)
-        #     grad = shape_gradient(cellvalues, q_point, i)
-        #     println("q_point=$q_point, i=$i, grad=", grad, ", size=", size(grad))
-        # end
-
-        # @show size(shape_gradient(cellvalues, q_point, 1))
         dNdξ = hcat([shape_gradient(cellvalues, q_point, i)[:,1] for i in 1:length(node_ids)]...)'
-        # @show size(dNdξ)
+
         J_xξ = x_nodes' * dNdξ
-        # @show J_xξ
+
         J_Xξ = X_nodes_mat' * dNdξ
-        # @show J_Xξ
-        # @show det(J_Xξ)
         detJ = det(J_Xξ)
-        if abs(detJ) < 1e-10
-            @warn "Singular Jacobian!" cell=cellid(cell) q_point=q_point detJ=detJ
-            @show cellid(cell), q_point, detJ
-            @show X_nodes_mat
-        end
         F = J_xξ * inv(J_Xξ)
-        # @show size(dNdξ)
-        # @show size(X_nodes_mat)
-        # @show size(J_Xξ)     
-        # @show J_Xξ
+        println("detJ: ", detJ)
+        println("F: ", F)
 
 
         # Call UMAT-based stress/tangent
-        σ, D, updated_state = compute_stress_tangent(vec(collect(ϵ)), dϵ, state_old[q_point], PROPS, nprops, t, F)
-        updated_state[101:106] = σ
-        state[q_point] = updated_state
+        σ, D, state[q_point] = compute_stress_tangent(vec(collect(ϵ)), dϵ, state_old[q_point], PROPS, nprops, t, F)
         
         dΩ = getdetJdV(cellvalues, q_point)
         for i in 1:n_basefuncs
             δϵ_ = shape_symmetric_gradient(cellvalues, q_point, i)
             δϵ = tensor_to_voigt6(δϵ_)
-            re[i] += (δϵ ⋅ σ) * dΩ
+            re[i] += dot(δϵ, σ) * dΩ
             for j in 1:i
                 Δϵ_ = shape_symmetric_gradient(cellvalues, q_point, j)
                 Δϵ = tensor_to_voigt6(Δϵ_)
@@ -249,3 +179,20 @@ function doassemble!(K::SparseMatrixCSC, r::Vector, cellvalues::CellValues, dh::
     end
     return K, r
 end
+
+
+function debug_compare_models(PROPS)
+    ϵ = [0.01, 0.0, 0.0, 0.0, 0.0, 0.0]
+    dϵ = [0.01, 0.0, 0.0, 0.0, 0.0, 0.0]
+    statev = zeros(108)
+    F = Matrix{Float64}(I, 3, 3)
+    F[1,1] = 1.01
+    t = 1
+    nprops = length(PROPS)
+
+    σ_umat, D_umat, statev_new = compute_stress_tangent(ϵ, dϵ, statev, PROPS, nprops, t, F)
+    println("UMAT stress: ", σ_umat)
+    println("UMAT tangent: ", D_umat)
+    println("UMAT statev (first 10): ", statev_new[1:10])
+end
+
