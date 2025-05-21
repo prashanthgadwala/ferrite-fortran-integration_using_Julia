@@ -34,20 +34,20 @@ function solve()
         1470.588416,    # 2: Bulk Modulus
         563.9098439,    # 3: Shear Modulus
         5.900948586,    # 4: Yield Exponent
-        0.33,           # 5: Plastic Poisson Ratio
-        0.001,          # 6: Viscoplastic Coefficient / Viscosity Parameter
-        10.0,           # 7: Viscoplastic Exponent
+        0.38,           # 5: Plastic Poisson Ratio
+        0.01,          # 6: Viscoplastic Coefficient / Viscosity Parameter
+        4.0,           # 7: Viscoplastic Exponent
         2.086229688,    # 8: Initial Yield Limit - Compression
-        2164.115496,    # 9: Isotropic Hardening Parameter - Compression
+        216.115496,    # 9: Isotropic Hardening Parameter - Compression
         4.450073598,    # 10: Isotropic Hardening Parameter - Compression
-        5401.554318,    # 11: Isotropic Hardening Parameter - Compression
+        540.554318,    # 11: Isotropic Hardening Parameter - Compression
         1.66898375,     # 12: Initial Yield Limit - Tension
-        1731.292397,    # 13: Isotropic Hardening Parameter – Tension
+        173.292397,    # 13: Isotropic Hardening Parameter – Tension
         3.560058879,    # 14: Isotropic Hardening Parameter – Tension
-        5401.554318,    # 15: Isotropic Hardening Parameter – Tension
-        0.0,            # 16: Kinematic Hardening Parameter
-        0.0,            # 17: Kinematic Hardening Parameter
-        0.0,            # 18: Kinematic Hardening Parameter
+        540.554318,    # 15: Isotropic Hardening Parameter – Tension
+        0.01,            # 16: Kinematic Hardening Parameter
+        0.005,            # 17: Kinematic Hardening Parameter
+        0.02,            # 18: Kinematic Hardening Parameter
         298.5381412,    # 19: Bulk Modulus – Maxwell branch 1
         128.572959,     # 20: Bulk Modulus – Maxwell branch 2
         126.0116202,    # 21: Bulk Modulus – Maxwell branch 3
@@ -89,8 +89,8 @@ function solve()
     L = 10.0 # beam length [m]
     w = 1.0  # beam width [m]
     h = 1.0  # beam height [m]
-    n = 2
-    nels = (10n, n, 2n) # Number of elements in each spatial direction
+    n = 4
+    nels = (10*n, n, 2*n) # Number of elements in each spatial direction
     P1 = Vec((0.0, 0.0, 0.0))  # Start point for geometry
     P2 = Vec((L, w, h))        # End point for geometry
     grid = generate_grid(Hexahedron, nels, P1, P2)
@@ -120,9 +120,9 @@ function solve()
     states_old = [zeros(nstatv) for _ in 1:nqp, _ in 1:getncells(grid)]
 
     # Newton-Raphson loop
-    n_timesteps = 10
+    n_timesteps = 100
     u_max = zeros(n_timesteps)
-    traction_magnitude = 1.e3 * range(0.5, 1.0, length=n_timesteps)
+    traction_magnitude = 1.e2 * range(0.1, 1.0, length=n_timesteps)
     NEWTON_TOL = 1e-6
 
     debug_compare_models(PROPS)
@@ -143,18 +143,27 @@ function solve()
             if norm_r < NEWTON_TOL
                 break
             end
-            println("r before apply_zero! at constrained DOFs: ", count(iszero, r))
+            println("Number of non-zero residuals in free DOFs: ", count(!iszero, r[Ferrite.free_dofs(dbcs)]))
             Rbefore = r[Ferrite.free_dofs(dbcs)]
             apply_zero!(K, r, dbcs)
             Rafter = r[Ferrite.free_dofs(dbcs)]
-            println("r after apply_zero! at constrained DOFs: ", count(iszero, r))
+            println("Number of non-zero residuals in free DOFs: ", count(!iszero, r[Ferrite.free_dofs(dbcs)]))
             println("checking if there is a change in R: ", all(Rbefore .== Rafter))
-            Δu = Symmetric(K) \ r
-            u -= Δu
+            Δu = K \ r
+            α = 0.1  # step size scaling
+            u -= α * Δu
             println("Max displacement: ", maximum(abs, u))
             println("Residual norm: ", norm_r)
         end
-        states_old .= states
+
+        for j in eachindex(states)
+            for i in eachindex(states[j])
+                states_old[j][i] .= states[j][i]
+            end
+        end
+
+        println("First 10 statev after Newton step: ", states[1:min(10,end), 1])
+        
         u_max[timestep] = maximum(abs, u)
     end
 

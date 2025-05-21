@@ -69,8 +69,7 @@ end
 function create_bc(dh, grid)
     dbcs = ConstraintHandler(dh)
     # Clamped on the left side
-    dofs = [1, 2, 3]
-    dbc = Dirichlet(:u, getfacetset(grid, "left"), (x, t) -> [0.0, 0.0, 0.0], dofs)
+    dbc = Dirichlet(:u, getfacetset(grid, "left"), (x, t) -> [0.0, 0.0, 0.0], [1, 2, 3])
     add!(dbcs, dbc)
     close!(dbcs)
     return dbcs
@@ -101,13 +100,19 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
         J_Xξ = X_nodes_mat' * dNdξ
         detJ = det(J_Xξ)
         F = J_xξ * inv(J_Xξ)
-        println("detJ: ", detJ)
-        println("F: ", F)
 
 
         # Call UMAT-based stress/tangent
         σ, D, state[q_point] = compute_stress_tangent(vec(collect(ϵ)), dϵ, state_old[q_point], PROPS, nprops, t, F)
         
+        #if t == 1 && q_point == 1
+        #    println("Tangent matrix D at first step:\n", D)
+        #end
+
+        if any(isnan, D) || any(isinf, D)
+            error("NaN or Inf detected in tangent matrix D at step $t, q_point $q_point")
+        end
+
         dΩ = getdetJdV(cellvalues, q_point)
         for i in 1:n_basefuncs
             δϵ_ = shape_symmetric_gradient(cellvalues, q_point, i)
@@ -180,7 +185,7 @@ function doassemble!(K::SparseMatrixCSC, r::Vector, cellvalues::CellValues, dh::
     return K, r
 end
 
-
+"""
 function debug_compare_models(PROPS)
     ϵ = [0.01, 0.0, 0.0, 0.0, 0.0, 0.0]
     dϵ = [0.01, 0.0, 0.0, 0.0, 0.0, 0.0]
@@ -196,3 +201,4 @@ function debug_compare_models(PROPS)
     println("UMAT statev (first 10): ", statev_new[1:10])
 end
 
+"""
