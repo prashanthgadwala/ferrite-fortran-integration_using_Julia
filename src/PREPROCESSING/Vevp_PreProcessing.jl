@@ -18,6 +18,43 @@ function doassemble_neumann!(r, dh, facetset, facetvalues, t)
     return r
 end
 
+
+function Tcompute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, statev::Vector{Float64}, PROPS::Vector{Float64}, nprops::Int, t::Int64, F::Matrix{Float64})
+    # Use only the first two props for linear elasticity
+    K = PROPS[2]  # Bulk modulus
+    G = PROPS[3]  # Shear modulus
+
+    # Lame parameters
+    λ = K - 2/3 * G
+    μ = G
+
+    # Voigt: [11, 22, 33, 12, 13, 23]
+    σ = zeros(6)
+    D = zeros(6,6)
+
+    # Stress: σ = λ tr(ϵ) I + 2μ ϵ
+    trϵ = ϵ[1] + ϵ[2] + ϵ[3]
+    σ[1] = λ*trϵ + 2μ*ϵ[1]
+    σ[2] = λ*trϵ + 2μ*ϵ[2]
+    σ[3] = λ*trϵ + 2μ*ϵ[3]
+    σ[4] = 2μ*ϵ[4]
+    σ[5] = 2μ*ϵ[5]
+    σ[6] = 2μ*ϵ[6]
+
+    # Consistent tangent for isotropic elasticity
+    for i in 1:3, j in 1:3
+        D[i,j] = λ
+    end
+    for i in 1:3
+        D[i,i] += 2μ
+    end
+    for i in 4:6
+        D[i,i] = 2μ
+    end
+
+    return σ, D, statev
+end
+
 function compute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, statev::Vector{Float64}, PROPS::Vector{Float64}, nprops::Int, t::Int64, F::Matrix{Float64})
     stress = zeros(6)
     ddsdde = zeros(6, 6)
@@ -89,7 +126,9 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
 
     for q_point in 1:getnquadpoints(cellvalues)
         # Compute total strain at this quadrature point
-        ϵ = function_symmetric_gradient(cellvalues, q_point, ue)
+        ϵ_ = function_symmetric_gradient(cellvalues, q_point, ue)
+        ϵ = tensor_to_voigt6(ϵ_)
+
         # Compute previous strain if you want to use strain increment
         dϵ = zeros(6)
 
@@ -102,31 +141,42 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
         F = J_xξ * inv(J_Xξ)
 
 
-        # Call UMAT-based stress/tangent
-        σ, D, state[q_point] = compute_stress_tangent(vec(collect(ϵ)), dϵ, state_old[q_point], PROPS, nprops, t, F)
+        # Call UMAT-based stress/tangent state[q_point]
+        σ, D, state[q_point] = compute_stress_tangent(ϵ, dϵ, state_old[q_point], PROPS, nprops, t, F)
         
-        #if t == 1 && q_point == 1
-        #    println("Tangent matrix D at first step:\n", D)
-        #end
-
         if any(isnan, D) || any(isinf, D)
+            @show ue, ϵ, F, state_old[q_point], σ, D
             error("NaN or Inf detected in tangent matrix D at step $t, q_point $q_point")
         end
+        if any(isnan, ue) || any(isinf, ue)
+            error("NaN or Inf detected in element displacement ue")
+        end
+        if any(isnan, F) || any(isinf, F)
+            error("NaN or Inf detected in deformation gradient F")
+        end 
 
         dΩ = getdetJdV(cellvalues, q_point)
         for i in 1:n_basefuncs
             δϵ_ = shape_symmetric_gradient(cellvalues, q_point, i)
             δϵ = tensor_to_voigt6(δϵ_)
+            #println("δϵ = ", δϵ)
+            #println("σ = ", σ)
+            #println("D = ", D)
             re[i] += dot(δϵ, σ) * dΩ
+            #println("re[$i] = ", re[i])
             for j in 1:i
                 Δϵ_ = shape_symmetric_gradient(cellvalues, q_point, j)
                 Δϵ = tensor_to_voigt6(Δϵ_)
                 Ke[i, j] += δϵ' * D * Δϵ * dΩ
+                #println("Ke[$i, $j] = ", Ke[i, j])
             end
         end
 
-
     end
+    #println("Ke = ", Ke)
+    #println("re = ", re)
+    #println("σ = ", σ)
+    #println("D = ", D)
     symmetrize_lower!(Ke)
 end
 

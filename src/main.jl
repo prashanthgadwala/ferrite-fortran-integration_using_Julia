@@ -30,56 +30,56 @@ function solve()
     # Define material properties in PROPS array
 
     PROPS = [
-        5.0,            # 1: Power Series Strain Approximation
-        1470.588416,    # 2: Bulk Modulus
-        563.9098439,    # 3: Shear Modulus
-        5.900948586,    # 4: Yield Exponent
-        0.38,           # 5: Plastic Poisson Ratio
-        0.01,          # 6: Viscoplastic Coefficient / Viscosity Parameter
-        4.0,           # 7: Viscoplastic Exponent
-        2.086229688,    # 8: Initial Yield Limit - Compression
-        216.115496,    # 9: Isotropic Hardening Parameter - Compression
-        4.450073598,    # 10: Isotropic Hardening Parameter - Compression
-        540.554318,    # 11: Isotropic Hardening Parameter - Compression
-        1.66898375,     # 12: Initial Yield Limit - Tension
-        173.292397,    # 13: Isotropic Hardening Parameter – Tension
-        3.560058879,    # 14: Isotropic Hardening Parameter – Tension
-        540.554318,    # 15: Isotropic Hardening Parameter – Tension
-        0.01,            # 16: Kinematic Hardening Parameter
-        0.005,            # 17: Kinematic Hardening Parameter
-        0.02,            # 18: Kinematic Hardening Parameter
-        298.5381412,    # 19: Bulk Modulus – Maxwell branch 1
-        128.572959,     # 20: Bulk Modulus – Maxwell branch 2
-        126.0116202,    # 21: Bulk Modulus – Maxwell branch 3
-        56.16237131,    # 22: Bulk Modulus – Maxwell branch 4
-        73.29632907,    # 23: Bulk Modulus – Maxwell branch 5
-        34.58797299,    # 24: Bulk Modulus – Maxwell branch 6
-        25.90272535,    # 25: Bulk Modulus – Maxwell branch 7
-        117.6700904,    # 26: Bulk Modulus – Maxwell branch 8
-        1000.0,         # 27: Volumetric Relaxation Time – Maxwell Branch 1
-        100.0,          # 28: Volumetric Relaxation Time – Maxwell Branch 2
-        10.0,           # 29: Volumetric Relaxation Time – Maxwell Branch 3
-        1.0,            # 30: Volumetric Relaxation Time – Maxwell Branch 4
-        0.1,            # 31: Volumetric Relaxation Time – Maxwell Branch 5
-        0.01,           # 32: Volumetric Relaxation Time – Maxwell Branch 6
-        0.001,          # 33: Volumetric Relaxation Time – Maxwell Branch 7
-        0.0001,         # 34: Volumetric Relaxation Time – Maxwell Branch 8
-        114.4770316,    # 35: Shear Modulus – Maxwell branch 1
-        49.30241285,    # 36: Shear Modulus – Maxwell branch 2
-        48.32024532,    # 37: Shear Modulus – Maxwell branch 3
-        21.53594689,    # 38: Shear Modulus – Maxwell branch 4
-        28.10611115,    # 39: Shear Modulus – Maxwell branch 5
-        13.26305731,    # 40: Shear Modulus – Maxwell branch 6
-        9.932624005,    # 41: Shear Modulus – Maxwell branch 7
-        45.1216136,     # 42: Shear Modulus – Maxwell branch 8
-        1000.0,         # 43: Deviatoric Relaxation Time – Maxwell Branch 1
-        100.0,          # 44: Deviatoric Relaxation Time – Maxwell Branch 2
-        10.0,           # 45: Deviatoric Relaxation Time – Maxwell Branch 3
-        1.0,            # 46: Deviatoric Relaxation Time – Maxwell Branch 4
-        0.1,            # 47: Deviatoric Relaxation Time – Maxwell Branch 5
-        0.01,           # 48: Deviatoric Relaxation Time – Maxwell Branch 6
-        0.001,          # 49: Deviatoric Relaxation Time – Maxwell Branch 7
-        0.0001          # 50: Deviatoric Relaxation Time – Maxwell Branch 8
+        1.0,                  # 1: Power Series Strain Approximation (dimensionless)
+        1.470588416e9,        # 2: Bulk Modulus [Pa]
+        5.639098439e8,        # 3: Shear Modulus [Pa]
+        5.900948586,          # 4: Yield Exponent (dimensionless)
+        0.38,                 # 5: Plastic Poisson Ratio (dimensionless)
+        0.01,                 # 6: Viscoplastic Coefficient / Viscosity Parameter (dimensionless)
+        4.0,                  # 7: Viscoplastic Exponent (dimensionless)
+        2.086229688e6,        # 8: Initial Yield Limit - Compression [Pa]
+        2.16115496e8,         # 9: Isotropic Hardening Parameter - Compression [Pa]
+        4.450073598e6,        # 10: Isotropic Hardening Parameter - Compression [Pa]
+        5.40554318e8,         # 11: Isotropic Hardening Parameter - Compression [Pa]
+        1.66898375e6,         # 12: Initial Yield Limit - Tension [Pa]
+        1.73292397e8,         # 13: Isotropic Hardening Parameter – Tension [Pa]
+        3.560058879e6,        # 14: Isotropic Hardening Parameter – Tension [Pa]
+        5.40554318e8,         # 15: Isotropic Hardening Parameter – Tension [Pa]
+        0.01,                 # 16: Kinematic Hardening Parameter (dimensionless)
+        0.005,                # 17: Kinematic Hardening Parameter (dimensionless)
+        0.02,                 # 18: Kinematic Hardening Parameter (dimensionless)
+        2.985381412e8,        # 19: Bulk Modulus – Maxwell branch 1 [Pa]
+        1.28572959e8,         # 20: Bulk Modulus – Maxwell branch 2 [Pa]
+        1.260116202e8,        # 21: Bulk Modulus – Maxwell branch 3 [Pa]
+        5.616237131e7,        # 22: Bulk Modulus – Maxwell branch 4 [Pa]
+        7.329632907e7,        # 23: Bulk Modulus – Maxwell branch 5 [Pa]
+        3.458797299e7,        # 24: Bulk Modulus – Maxwell branch 6 [Pa]
+        2.590272535e7,        # 25: Bulk Modulus – Maxwell branch 7 [Pa]
+        1.176700904e8,        # 26: Bulk Modulus – Maxwell branch 8 [Pa]
+        1000.0,               # 27: Volumetric Relaxation Time – Maxwell Branch 1 [s]
+        100.0,                # 28: Volumetric Relaxation Time – Maxwell Branch 2 [s]
+        10.0,                 # 29: Volumetric Relaxation Time – Maxwell Branch 3 [s]
+        1.0,                  # 30: Volumetric Relaxation Time – Maxwell Branch 4 [s]
+        0.1,                  # 31: Volumetric Relaxation Time – Maxwell Branch 5 [s]
+        0.01,                 # 32: Volumetric Relaxation Time – Maxwell Branch 6 [s]
+        0.001,                # 33: Volumetric Relaxation Time – Maxwell Branch 7 [s]
+        0.0001,               # 34: Volumetric Relaxation Time – Maxwell Branch 8 [s]
+        1.144770316e8,        # 35: Shear Modulus – Maxwell branch 1 [Pa]
+        4.930241285e7,        # 36: Shear Modulus – Maxwell branch 2 [Pa]
+        4.832024532e7,        # 37: Shear Modulus – Maxwell branch 3 [Pa]
+        2.153594689e7,        # 38: Shear Modulus – Maxwell branch 4 [Pa]
+        2.810611115e7,        # 39: Shear Modulus – Maxwell branch 5 [Pa]
+        1.326305731e7,        # 40: Shear Modulus – Maxwell branch 6 [Pa]
+        9.932624005e6,        # 41: Shear Modulus – Maxwell branch 7 [Pa]
+        4.51216136e7,         # 42: Shear Modulus – Maxwell branch 8 [Pa]
+        1000.0,               # 43: Deviatoric Relaxation Time – Maxwell Branch 1 [s]
+        100.0,                # 44: Deviatoric Relaxation Time – Maxwell Branch 2 [s]
+        10.0,                 # 45: Deviatoric Relaxation Time – Maxwell Branch 3 [s]
+        1.0,                  # 46: Deviatoric Relaxation Time – Maxwell Branch 4 [s]
+        0.1,                  # 47: Deviatoric Relaxation Time – Maxwell Branch 5 [s]
+        0.01,                 # 48: Deviatoric Relaxation Time – Maxwell Branch 6 [s]
+        0.001,                # 49: Deviatoric Relaxation Time – Maxwell Branch 7 [s]
+        0.0001                # 50: Deviatoric Relaxation Time – Maxwell Branch 8 [s]
     ]
     
     nprops = length(PROPS) # Number of material properties
@@ -118,14 +118,15 @@ function solve()
     nstatv = 108 # Number of state variables
     states = [zeros(nstatv) for _ in 1:nqp, _ in 1:getncells(grid)]
     states_old = [zeros(nstatv) for _ in 1:nqp, _ in 1:getncells(grid)]
+    println("First 10 statev after Newton step: ", states[1:min(10,end), 1])
+    println("First 10 statev after Newton step: ", states_old[1:min(10,end), 1])
+
 
     # Newton-Raphson loop
     n_timesteps = 100
     u_max = zeros(n_timesteps)
     traction_magnitude = 1.e2 * range(0.1, 1.0, length=n_timesteps)
     NEWTON_TOL = 1e-6
-
-    debug_compare_models(PROPS)
 
     for timestep in 1:n_timesteps
         t = timestep
@@ -135,32 +136,38 @@ function solve()
         update!(dbcs, t)
         apply!(u, dbcs)
     
-        while true; newton_itr += 1
+        while true
+            newton_itr += 1
             doassemble!(K, r, cellvalues, dh, PROPS, u, states, states_old, nprops, t, Xnode)
             doassemble_neumann!(r, dh, getfacetset(grid, "right"), facetvalues, traction)
+            #println("Assembled residual vector: ", r)
+            #println("Assembled stiffness matrix: ", K)
             norm_r = norm(r[Ferrite.free_dofs(dbcs)])
+            println("r before apply_zero! at constrained DOFs: ", count(iszero, r))
+            apply_zero!(K, r, dbcs)
+            println("r after apply_zero! at constrained DOFs: ", count(iszero, r))
+            #println("Assembled stiffness matrix after applying BC: ", K)
+
+
             print("Iteration: $newton_itr \tresidual: $(@sprintf("%.8f", norm_r))\n")
             if norm_r < NEWTON_TOL
                 break
             end
-            println("Number of non-zero residuals in free DOFs: ", count(!iszero, r[Ferrite.free_dofs(dbcs)]))
-            Rbefore = r[Ferrite.free_dofs(dbcs)]
-            apply_zero!(K, r, dbcs)
-            Rafter = r[Ferrite.free_dofs(dbcs)]
-            println("Number of non-zero residuals in free DOFs: ", count(!iszero, r[Ferrite.free_dofs(dbcs)]))
-            println("checking if there is a change in R: ", all(Rbefore .== Rafter))
-            Δu = K \ r
+            Δu = Symmetric(K) \ r
+            apply_zero!(Δu, dbcs)
             α = 0.1  # step size scaling
             u -= α * Δu
             println("Max displacement: ", maximum(abs, u))
             println("Residual norm: ", norm_r)
         end
 
-        for j in eachindex(states)
+        """for j in eachindex(states)
             for i in eachindex(states[j])
                 states_old[j][i] .= states[j][i]
             end
-        end
+        end"""
+
+        states_old .= states
 
         println("First 10 statev after Newton step: ", states[1:min(10,end), 1])
         
