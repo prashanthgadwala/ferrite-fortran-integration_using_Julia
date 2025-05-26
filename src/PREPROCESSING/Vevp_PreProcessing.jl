@@ -117,23 +117,61 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
     reinit!(cellvalues, cell)
 
     node_ids = getnodes(cell)  # global node indices for this cell
+    #println("node_ids = ", node_ids)
 
     X_nodes = [dh.grid.nodes[i].x for i in node_ids]  # reference coordinates as Vecs
+    #println("X_nodes = ", X_nodes)
     X_nodes_mat = hcat(X_nodes...)'  # (n_nodes × 3) matrix, each row is a node
+    #println("X_nodes_mat = ", X_nodes_mat)
+    #println("ue = ", ue)
     u_mat = reshape(ue, 3, :)'  # (n_nodes × 3) for 3D
-    x_nodes = X_nodes_mat .+ u_mat  # (n_nodes × 3) current coordinates#ä
+    #println("u_mat = ", u_mat)
+    x_nodes = X_nodes_mat .+ u_mat  # (n_nodes × 3) current coordinates#
+    #println("x_nodes = ", x_nodes)
+    #println("Element size: ", maximum(X_nodes_mat, dims=1) - minimum(X_nodes_mat, dims=1))
+    #eldofs = celldofs(cell)
+    #for (i, dof) in enumerate(eldofs)
+    #    println("Local node $(div(i-1,3)+1), dof $((i-1)%3+1): global dof $dof, value $(ue[i])")
+    #end
+
 
 
     for q_point in 1:getnquadpoints(cellvalues)
         # Compute total strain at this quadrature point
         ϵ_ = function_symmetric_gradient(cellvalues, q_point, ue)
+        #println("ϵ_ = ", ϵ_)
         ϵ = tensor_to_voigt6(ϵ_)
+        #println("max(abs, ϵ) = ", maximum(abs, ϵ))
+        #println("ϵ = ", ϵ)
 
         # Compute previous strain if you want to use strain increment
+
         dϵ = zeros(6)
 
-        dNdξ = hcat([shape_gradient(cellvalues, q_point, i)[:,1] for i in 1:length(node_ids)]...)'
+        dNdξ = [shape_gradient(cellvalues, q_point, i) for i in 1:8]
+        #dNdξ = vcat(dNdξ...)'  # (n_nodes × 3) matrix, each row is a node gradient
 
+        """n_nodes = length(node_ids)
+        dNdξ = zeros(n_nodes, 3)
+        for i in 1:n_nodes
+            grad = shape_gradient(cellvalues, q_point, i)
+            dNdξ[i, :] = grad[:, 1]  # Always take the first column for geometry
+        end
+        """
+        
+        
+        println("dNdξ = ", dNdξ)
+        println("x_nodes = ", x_nodes)
+
+        """ n_nodes = length(node_ids)
+        dNdξ = zeros(n_nodes, 3)
+        for i in 1:n_nodes
+            # This gives you the 3-vector gradient for node i
+            dNdξ[i, :] = shape_gradient(cellvalues, q_point, i)[:, 1]
+        end
+        
+
+        """
         J_xξ = x_nodes' * dNdξ
 
         J_Xξ = X_nodes_mat' * dNdξ

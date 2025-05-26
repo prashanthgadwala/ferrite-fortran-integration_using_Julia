@@ -118,8 +118,8 @@ function solve()
     nstatv = 108 # Number of state variables
     states = [zeros(nstatv) for _ in 1:nqp, _ in 1:getncells(grid)]
     states_old = [zeros(nstatv) for _ in 1:nqp, _ in 1:getncells(grid)]
-    println("First 10 statev after Newton step: ", states[1:min(10,end), 1])
-    println("First 10 statev after Newton step: ", states_old[1:min(10,end), 1])
+    #println("First 10 statev after Newton step: ", states[1:min(10,end), 1])
+    #println("First 10 statev after Newton step: ", states_old[1:min(10,end), 1])
 
 
     # Newton-Raphson loop
