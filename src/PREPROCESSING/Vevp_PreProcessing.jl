@@ -148,29 +148,16 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
 
         dϵ = zeros(6)
 
-        # Compute shape gradients for each node at this quadrature point
-        dNdξ_before = [shape_gradient(cellvalues, q_point, i) for i in 1:length(node_ids)]
-        # dNdξ_before is a vector of 3x3 matrices (Tensor{2,3,Float64,9})
-
-        # Extract the first nonzero row from each matrix to form an 8x3 matrix
-        dNdξ = zeros(Float64, 8, 3)  # 8 nodes × 3 directions
-        for i in 1:8
-            T = dNdξ_before[i]
-            for row in 1:3
-                if any(T[row, :] .!= 0.0)
-                    dNdξ[i, :] = T[row, :]
-                    break
-                end
-            end
-        end
 
         # Now dNdξ_fixed[i, :] is the gradient vector for node i
 
-        #dNdξ = [shape_gradient(cellvalues, q_point, i) for i in 1:length(node_ids)]
+        dNdξ = [shape_gradient(cellvalues, q_point, i) for i in 1:length(node_ids)]
         #println("dNdξ before = ", dNdξ)
         #println("dNdξ (shape gradients) = ", size(dNdξ))
-        #dNdξ = vcat(dNdξ...)'  # (n_nodes × 3) matrix, each row is a node gradient
+        dNdξ = hcat(dNdξ...)'  # (n_nodes × 3) matrix, each row is a node gradient
         #println("dNdξ (shape gradients) = ", size(dNdξ))
+        logic = 1:3:size(dNdξ, 1)  # Extract only the first column for geometry
+        dNdξ = dNdξ[logic, :]  # (n_nodes × 3) matrix, each row is a node gradient
 
         """n_nodes = length(node_ids)
         dNdξ = zeros(n_nodes, 3)
@@ -181,8 +168,8 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
         """
         
         
-        # println("dNdξ = ", dNdξ)
-        # println("x_nodes = ", x_nodes)
+        println("dNdξ = ", dNdξ)
+        println("x_nodes = ", x_nodes)
 
         """ n_nodes = length(node_ids)
         dNdξ = zeros(n_nodes, 3)
@@ -195,12 +182,28 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
         """
         J_xξ = x_nodes' * dNdξ
 
-        println("J_xξ = ", J_xξ)
+        # println("J_xξ = ", J_xξ)
 
         J_Xξ = X_nodes_mat' * dNdξ
         detJ = det(J_Xξ)
         F = J_xξ * inv(J_Xξ)
-        println("F = ", F)
+        # println("F = ", F)
+
+            # DEBUG: Print info if F is "bad"
+        if any(abs.(F) .> 2.0)  # or use your own threshold
+            println("==== BAD F DETECTED ====")
+            println("cell id: ", cellid(cell))
+            println("q_point: ", q_point)
+            println("node_ids: ", node_ids)
+            println("X_nodes_mat (reference):\n", X_nodes_mat)
+            println("x_nodes (current):\n", x_nodes)
+            println("dNdξ:\n", dNdξ)
+            println("J_xξ:\n", J_xξ)
+            println("J_Xξ:\n", J_Xξ)
+            println("detJ: ", detJ)
+            println("F:\n", F)
+            println("=======================")
+        end
 
 
         # Call UMAT-based stress/tangent state[q_point]

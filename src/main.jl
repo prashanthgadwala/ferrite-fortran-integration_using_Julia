@@ -123,9 +123,9 @@ function solve()
 
 
     # Newton-Raphson loop
-    n_timesteps = 100
+    n_timesteps = 2
     u_max = zeros(n_timesteps)
-    traction_magnitude = 1.e2 * range(0.1, 1.0, length=n_timesteps)
+    traction_magnitude = 1.e1 * range(0.1, 1.0, length=n_timesteps)
     NEWTON_TOL = 1e-6
 
     for timestep in 1:n_timesteps
@@ -155,8 +155,8 @@ function solve()
             end
             Δu = Symmetric(K) \ r
             apply_zero!(Δu, dbcs)
-            α = 0.1  # step size scaling
-            u -= α * Δu
+            α = 0.01  # step size scaling
+            u += α * Δu
             println("Max displacement: ", maximum(abs, u))
             println("Residual norm: ", norm_r)
         end
