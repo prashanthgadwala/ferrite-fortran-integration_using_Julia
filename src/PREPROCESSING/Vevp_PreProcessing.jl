@@ -132,7 +132,7 @@ function create_bc(dh, grid)
     return dbcs
 end
 
-function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, state_old, t, Xnode, dh)
+function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, state_old, t, dh)
     n_basefuncs = getnbasefunctions(cellvalues)
     reinit!(cellvalues, cell)
 
@@ -140,7 +140,7 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
     #println("node_ids = ", node_ids)
 
     X_nodes = [dh.grid.nodes[i].x for i in node_ids]  # reference coordinates as Vecs
-    #println("X_nodes = ", X_nodes)
+    println("X_nodes = ", X_nodes)
     X_nodes_mat = hcat(X_nodes...)'  # (n_nodes × 3) matrix, each row is a node
     #println("X_nodes_mat = ", X_nodes_mat)
     #println("ue = ", ue)
@@ -153,7 +153,7 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
     #for (i, dof) in enumerate(eldofs)
     #    println("Local node $(div(i-1,3)+1), dof $((i-1)%3+1): global dof $dof, value $(ue[i])")
     #end
-
+    
 
 
     for q_point in 1:getnquadpoints(cellvalues)
@@ -171,13 +171,53 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
 
         # Now dNdξ_fixed[i, :] is the gradient vector for node i
 
-        dNdξ = [shape_gradient(cellvalues, q_point, i) for i in 1:length(node_ids)]
-        #println("dNdξ before = ", dNdξ)
-        #println("dNdξ (shape gradients) = ", size(dNdξ))
-        dNdξ = hcat(dNdξ...)'  # (n_nodes × 3) matrix, each row is a node gradient
-        #println("dNdξ (shape gradients) = ", size(dNdξ))
-        logic = 1:3:size(dNdξ, 1)  # Extract only the first column for geometry
-        dNdξ = dNdξ[logic, :]  # (n_nodes × 3) matrix, each row is a node gradient
+        # dNdξ = [shape_gradient(cellvalues, q_point, i) for i in 1:length(node_ids)]
+        # println("dNdξ before = ", dNdξ)
+        # println("dNdξ (shape gradients) = ", size(dNdξ))
+        # dNdξ = hcat(dNdξ...)'  # (n_nodes × 3) matrix, each row is a node gradient
+        # println("dNdξ = ", dNdξ)
+
+        # dNdξ = zeros(n_nodes, 3)
+        # for i in 1:n_nodes
+        #     dNdξ[i, :] = Ferrite.reference_shape_gradient(interp, ξ, i)
+        # end
+
+
+        # n_nodes = length(node_ids)
+        # dNdξ = zeros(n_nodes, 3)
+        # for i in 1:n_nodes
+        #     grad = shape_gradient(cellvalues, q_point, i)
+        #     # If grad is a 3-vector, just assign
+        #     if ndims(grad) == 1
+        #         dNdξ[i, :] = grad
+        #     else
+        #         # For vector-valued, extract the nonzero row
+        #         for row in eachrow(grad)
+        #             if any(!iszero, row)
+        #                 dNdξ[i, :] = row
+        #                 break
+        #             end
+        #         end
+        #     end
+        # end            
+
+
+        n_nodes = length(node_ids)
+        dNdξ = zeros(n_nodes, 3)
+        for i in 1:n_nodes
+            grad = shape_gradient(cellvalues, q_point, i)
+            if ndims(grad) == 1
+                dNdξ[i, :] = grad
+            else
+                # For vector-valued fields, extract the nonzero row
+                for row in eachrow(grad)
+                    if any(!iszero, row)
+                        dNdξ[i, :] = row
+                        break
+                    end
+                end
+            end
+        end
 
         """n_nodes = length(node_ids)
         dNdξ = zeros(n_nodes, 3)
@@ -200,6 +240,12 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
         
 
         """
+
+        # dNdξ = Ferrite.getpoints(qr)
+        # dNdξ = hcat(dNdξ...)' 
+
+        # println("dNdξ = ", dNdξ)
+
         J_xξ = x_nodes' * dNdξ
 
         # println("J_xξ = ", J_xξ)
@@ -246,7 +292,7 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
 
         w_q = Ferrite.getweights(cellvalues.qr)[q_point]
         dΩ = detJ * w_q
-        println("q_point = ", q_point, ", detJ = ", detJ, ", w_q = ", w_q, ", dΩ = ", dΩ)
+        # println("q_point = ", q_point, ", detJ = ", detJ, ", w_q = ", w_q, ", dΩ = ", dΩ)
 
         for i in 1:n_basefuncs
             δϵ_ = shape_symmetric_gradient(cellvalues, q_point, i)
@@ -306,7 +352,7 @@ function symmetrize_lower!(K)
 end;
 
 function doassemble!(K::SparseMatrixCSC, r::Vector, cellvalues::CellValues, dh::DofHandler,
-                     PROPS::Vector{Float64}, u, states, states_old, nprops, t, Xnode)
+                     PROPS::Vector{Float64}, u, states, states_old, nprops, t)
     assembler = start_assemble(K, r)
     nu = getnbasefunctions(cellvalues)
     re = zeros(nu)     # element residual vector
@@ -321,7 +367,7 @@ function doassemble!(K::SparseMatrixCSC, r::Vector, cellvalues::CellValues, dh::
         state = @view states[:, i]
         state_old = @view states_old[:, i]
         # Call UMAT-based assembly
-        assemble_cell!(ke, re, cell, cellvalues, PROPS, nprops, ue, state, state_old, t, Xnode, dh)
+        assemble_cell!(ke, re, cell, cellvalues, PROPS, nprops, ue, state, state_old, t, dh)
         assemble!(assembler, eldofs, ke, re)
     end
     return K, r

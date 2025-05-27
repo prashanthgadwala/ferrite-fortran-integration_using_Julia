@@ -137,7 +137,7 @@ function solve()
         apply!(u, dbcs)
     
         while true; newton_itr += 1
-            doassemble!(K, r, cellvalues, dh, PROPS, u, states, states_old, nprops, t, Xnode)
+            doassemble!(K, r, cellvalues, dh, PROPS, u, states, states_old, nprops, t)
             doassemble_neumann!(r, dh, getfacetset(grid, "right"), facetvalues, traction)
             #println("Assembled residual vector: ", r)
             #println("Assembled stiffness matrix: ", K)
@@ -158,7 +158,7 @@ function solve()
             #     println("Warning: Large displacement increment detected, scaling down Δu")
             #     Δu .*= 1.e-10 / maximum(abs, Δu)
             # end
-            u += Δu
+            u -= Δu
             println("Max displacement: ", maximum(abs, u))
             println("Residual norm: ", norm_r)
         end

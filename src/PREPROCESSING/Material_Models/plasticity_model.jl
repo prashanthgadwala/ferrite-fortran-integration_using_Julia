@@ -144,6 +144,7 @@ function assemble_cell!(Ke, re, cell, cellvalues, material,
         σ, D, state[q_point] = compute_stress_tangent(ϵ, material, state_old[q_point])
 
         dΩ = getdetJdV(cellvalues, q_point)
+        println("q_point: $q_point, dΩ: $dΩ, σ: $σ, D: $D")
         for i in 1:n_basefuncs
             δϵ = shape_symmetric_gradient(cellvalues, q_point, i)
             re[i] += (δϵ ⊡ σ) * dΩ # add internal force to residual
