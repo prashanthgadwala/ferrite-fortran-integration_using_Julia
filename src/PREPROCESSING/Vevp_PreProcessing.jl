@@ -74,6 +74,26 @@ function compute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, state
     dfgrd1 = F
     noel, npt, layer, kspt, kstep, kinc = 1, 1, 1, 1, 1, 1
 
+    """println("==== UMAT INPUT CHECK ====")
+    println("stran: ", stran)
+    println("dstran: ", dstran)
+    println("F (dfgrd1): ", dfgrd1)
+    println("statev (first 10): ", statev[1:10])
+    println("props (first 10): ", PROPS[1:10])
+    println("dtime: ", dtime)
+    println("noel: ", noel, " npt: ", npt)
+    println("==========================")"""
+
+    if any(isnan, stran) || any(isinf, stran)
+        error("NaN or Inf in strain input to UMAT")
+    end
+    if any(isnan, dfgrd1) || any(isinf, dfgrd1)
+        error("NaN or Inf in deformation gradient input to UMAT")
+    end
+    if any(isnan, statev) || any(isinf, statev)
+        error("NaN or Inf in statev input to UMAT")
+    end
+
     call_umat(
         stress, statev, ddsdde, sse, spd, scd, rpl, ddsddt, drplde, drpldt,
         stran, dstran, time, dtime, temp, dtemp, predef, dpred, cmname,
@@ -168,8 +188,8 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
         """
         
         
-        println("dNdξ = ", dNdξ)
-        println("x_nodes = ", x_nodes)
+        # println("dNdξ = ", dNdξ)
+        # println("x_nodes = ", x_nodes)
 
         """ n_nodes = length(node_ids)
         dNdξ = zeros(n_nodes, 3)
@@ -190,20 +210,20 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
         # println("F = ", F)
 
             # DEBUG: Print info if F is "bad"
-        if any(abs.(F) .> 2.0)  # or use your own threshold
-            println("==== BAD F DETECTED ====")
-            println("cell id: ", cellid(cell))
-            println("q_point: ", q_point)
-            println("node_ids: ", node_ids)
-            println("X_nodes_mat (reference):\n", X_nodes_mat)
-            println("x_nodes (current):\n", x_nodes)
-            println("dNdξ:\n", dNdξ)
-            println("J_xξ:\n", J_xξ)
-            println("J_Xξ:\n", J_Xξ)
-            println("detJ: ", detJ)
-            println("F:\n", F)
-            println("=======================")
-        end
+        # if any(abs.(F) .> 2.0)  # or use your own threshold
+        #     println("==== BAD F DETECTED ====")
+        #     println("cell id: ", cellid(cell))
+        #     println("q_point: ", q_point)
+        #     println("node_ids: ", node_ids)
+        #     println("X_nodes_mat (reference):\n", X_nodes_mat)
+        #     println("x_nodes (current):\n", x_nodes)
+        #     println("dNdξ:\n", dNdξ)
+        #     println("J_xξ:\n", J_xξ)
+        #     println("J_Xξ:\n", J_Xξ)
+        #     println("detJ: ", detJ)
+        #     println("F:\n", F)
+        #     println("=======================")
+        # end
 
 
         # Call UMAT-based stress/tangent state[q_point]
@@ -220,7 +240,14 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
             error("NaN or Inf detected in deformation gradient F")
         end 
 
-        dΩ = getdetJdV(cellvalues, q_point)
+        # dΩ = getdetJdV(cellvalues, q_point)
+        # w_q = Ferrite.getweights(cellvalues.qr)[q_point]
+        # println("q_point = ", q_point, ", detJ = ", detJ, ", w_q = ", w_q, ", dΩ = ", dΩ)
+
+        w_q = Ferrite.getweights(cellvalues.qr)[q_point]
+        dΩ = detJ * w_q
+        println("q_point = ", q_point, ", detJ = ", detJ, ", w_q = ", w_q, ", dΩ = ", dΩ)
+
         for i in 1:n_basefuncs
             δϵ_ = shape_symmetric_gradient(cellvalues, q_point, i)
             δϵ = tensor_to_voigt6(δϵ_)

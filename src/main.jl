@@ -29,57 +29,57 @@ end
 function solve()
     # Define material properties in PROPS array
 
-    PROPS = [
-        1.0,                  # 1: Power Series Strain Approximation (dimensionless)
-        1.470588416e9,        # 2: Bulk Modulus [Pa]
-        5.639098439e8,        # 3: Shear Modulus [Pa]
-        5.900948586,          # 4: Yield Exponent (dimensionless)
-        0.38,                 # 5: Plastic Poisson Ratio (dimensionless)
-        0.01,                 # 6: Viscoplastic Coefficient / Viscosity Parameter (dimensionless)
-        4.0,                  # 7: Viscoplastic Exponent (dimensionless)
-        2.086229688e6,        # 8: Initial Yield Limit - Compression [Pa]
-        2.16115496e8,         # 9: Isotropic Hardening Parameter - Compression [Pa]
-        4.450073598e6,        # 10: Isotropic Hardening Parameter - Compression [Pa]
-        5.40554318e8,         # 11: Isotropic Hardening Parameter - Compression [Pa]
-        1.66898375e6,         # 12: Initial Yield Limit - Tension [Pa]
-        1.73292397e8,         # 13: Isotropic Hardening Parameter – Tension [Pa]
-        3.560058879e6,        # 14: Isotropic Hardening Parameter – Tension [Pa]
-        5.40554318e8,         # 15: Isotropic Hardening Parameter – Tension [Pa]
-        0.01,                 # 16: Kinematic Hardening Parameter (dimensionless)
-        0.005,                # 17: Kinematic Hardening Parameter (dimensionless)
-        0.02,                 # 18: Kinematic Hardening Parameter (dimensionless)
-        2.985381412e8,        # 19: Bulk Modulus – Maxwell branch 1 [Pa]
-        1.28572959e8,         # 20: Bulk Modulus – Maxwell branch 2 [Pa]
-        1.260116202e8,        # 21: Bulk Modulus – Maxwell branch 3 [Pa]
-        5.616237131e7,        # 22: Bulk Modulus – Maxwell branch 4 [Pa]
-        7.329632907e7,        # 23: Bulk Modulus – Maxwell branch 5 [Pa]
-        3.458797299e7,        # 24: Bulk Modulus – Maxwell branch 6 [Pa]
-        2.590272535e7,        # 25: Bulk Modulus – Maxwell branch 7 [Pa]
-        1.176700904e8,        # 26: Bulk Modulus – Maxwell branch 8 [Pa]
-        1000.0,               # 27: Volumetric Relaxation Time – Maxwell Branch 1 [s]
-        100.0,                # 28: Volumetric Relaxation Time – Maxwell Branch 2 [s]
-        10.0,                 # 29: Volumetric Relaxation Time – Maxwell Branch 3 [s]
-        1.0,                  # 30: Volumetric Relaxation Time – Maxwell Branch 4 [s]
-        0.1,                  # 31: Volumetric Relaxation Time – Maxwell Branch 5 [s]
-        0.01,                 # 32: Volumetric Relaxation Time – Maxwell Branch 6 [s]
-        0.001,                # 33: Volumetric Relaxation Time – Maxwell Branch 7 [s]
-        0.0001,               # 34: Volumetric Relaxation Time – Maxwell Branch 8 [s]
-        1.144770316e8,        # 35: Shear Modulus – Maxwell branch 1 [Pa]
-        4.930241285e7,        # 36: Shear Modulus – Maxwell branch 2 [Pa]
-        4.832024532e7,        # 37: Shear Modulus – Maxwell branch 3 [Pa]
-        2.153594689e7,        # 38: Shear Modulus – Maxwell branch 4 [Pa]
-        2.810611115e7,        # 39: Shear Modulus – Maxwell branch 5 [Pa]
-        1.326305731e7,        # 40: Shear Modulus – Maxwell branch 6 [Pa]
-        9.932624005e6,        # 41: Shear Modulus – Maxwell branch 7 [Pa]
-        4.51216136e7,         # 42: Shear Modulus – Maxwell branch 8 [Pa]
-        1000.0,               # 43: Deviatoric Relaxation Time – Maxwell Branch 1 [s]
-        100.0,                # 44: Deviatoric Relaxation Time – Maxwell Branch 2 [s]
-        10.0,                 # 45: Deviatoric Relaxation Time – Maxwell Branch 3 [s]
-        1.0,                  # 46: Deviatoric Relaxation Time – Maxwell Branch 4 [s]
-        0.1,                  # 47: Deviatoric Relaxation Time – Maxwell Branch 5 [s]
-        0.01,                 # 48: Deviatoric Relaxation Time – Maxwell Branch 6 [s]
-        0.001,                # 49: Deviatoric Relaxation Time – Maxwell Branch 7 [s]
-        0.0001                # 50: Deviatoric Relaxation Time – Maxwell Branch 8 [s]
+        PROPS = [
+        5,                        # 1: Power Series Strain Approximation (dimensionless)
+        1470.588416e6,            # 2: Bulk Modulus [Pa]
+        563.9098439e6,            # 3: Shear Modulus [Pa]
+        5.900948586,              # 4: Yield Exponent (dimensionless)
+        0.33,                     # 5: Plastic Poisson Ratio (dimensionless)
+        0.001,                    # 6: Viscoplastic Coefficient (dimensionless)
+        10,                       # 7: Viscoplastic Exponent (dimensionless)
+        2.086229688e6,            # 8: Initial Yield Limit - Compression [Pa]
+        2164.115496e6,            # 9: Isotropic Hardening Parameter - Compression [Pa]
+        4.450073598e6,            # 10: Isotropic Hardening Parameter - Compression [Pa]
+        5401.554318e6,            # 11: Isotropic Hardening Parameter - Compression [Pa]
+        1.66898375e6,             # 12: Initial Yield Limit - Tension [Pa]
+        1731.292397e6,            # 13: Isotropic Hardening Parameter – Tension [Pa]
+        3.560058879e6,            # 14: Isotropic Hardening Parameter – Tension [Pa]
+        5401.554318e6,            # 15: Isotropic Hardening Parameter – Tension [Pa]
+        0,                        # 16: Kinematic Hardening Parameter (dimensionless)
+        0,                        # 17: Kinematic Hardening Parameter (dimensionless)
+        0,                        # 18: Kinematic Hardening Parameter (dimensionless)
+        298.5381412e6,            # 19: Bulk Modulus – Maxwell branch 1 [Pa]
+        128.572959e6,             # 20: Bulk Modulus – Maxwell branch 2 [Pa]
+        126.0116202e6,            # 21: Bulk Modulus – Maxwell branch 3 [Pa]
+        56.16237131e6,            # 22: Bulk Modulus – Maxwell branch 4 [Pa]
+        73.29632907e6,            # 23: Bulk Modulus – Maxwell branch 5 [Pa]
+        34.58797299e6,            # 24: Bulk Modulus – Maxwell branch 6 [Pa]
+        25.90272535e6,            # 25: Bulk Modulus – Maxwell branch 7 [Pa]
+        117.6700904e6,            # 26: Bulk Modulus – Maxwell branch 8 [Pa]
+        1000.0,                   # 27: Volumetric Relaxation Time – Maxwell Branch 1 [s]
+        100.0,                    # 28: Volumetric Relaxation Time – Maxwell Branch 2 [s]
+        10.0,                     # 29: Volumetric Relaxation Time – Maxwell Branch 3 [s]
+        1.0,                      # 30: Volumetric Relaxation Time – Maxwell Branch 4 [s]
+        0.1,                      # 31: Volumetric Relaxation Time – Maxwell Branch 5 [s]
+        0.01,                     # 32: Volumetric Relaxation Time – Maxwell Branch 6 [s]
+        0.001,                    # 33: Volumetric Relaxation Time – Maxwell Branch 7 [s]
+        0.0001,                   # 34: Volumetric Relaxation Time – Maxwell Branch 8 [s]
+        114.4770316e6,            # 35: Shear Modulus – Maxwell branch 1 [Pa]
+        49.30241285e6,            # 36: Shear Modulus – Maxwell branch 2 [Pa]
+        48.32024532e6,            # 37: Shear Modulus – Maxwell branch 3 [Pa]
+        21.53594689e6,            # 38: Shear Modulus – Maxwell branch 4 [Pa]
+        28.10611115e6,            # 39: Shear Modulus – Maxwell branch 5 [Pa]
+        13.26305731e6,            # 40: Shear Modulus – Maxwell branch 6 [Pa]
+        9.932624005e6,            # 41: Shear Modulus – Maxwell branch 7 [Pa]
+        45.1216136e6,             # 42: Shear Modulus – Maxwell branch 8 [Pa]
+        1000.0,                   # 43: Deviatoric Relaxation Time – Maxwell Branch 1 [s]
+        100.0,                    # 44: Deviatoric Relaxation Time – Maxwell Branch 2 [s]
+        10.0,                     # 45: Deviatoric Relaxation Time – Maxwell Branch 3 [s]
+        1.0,                      # 46: Deviatoric Relaxation Time – Maxwell Branch 4 [s]
+        0.1,                      # 47: Deviatoric Relaxation Time – Maxwell Branch 5 [s]
+        0.01,                     # 48: Deviatoric Relaxation Time – Maxwell Branch 6 [s]
+        0.001,                    # 49: Deviatoric Relaxation Time – Maxwell Branch 7 [s]
+        0.0001                    # 50: Deviatoric Relaxation Time – Maxwell Branch 8 [s]
     ]
     
     nprops = length(PROPS) # Number of material properties
@@ -125,7 +125,7 @@ function solve()
     # Newton-Raphson loop
     n_timesteps = 2
     u_max = zeros(n_timesteps)
-    traction_magnitude = 1.e1 * range(0.1, 1.0, length=n_timesteps)
+    traction_magnitude = 1.e-3 * range(0.1, 1.0, length=n_timesteps)
     NEWTON_TOL = 1e-6
 
     for timestep in 1:n_timesteps
@@ -136,8 +136,7 @@ function solve()
         update!(dbcs, t)
         apply!(u, dbcs)
     
-        while true
-            newton_itr += 1
+        while true; newton_itr += 1
             doassemble!(K, r, cellvalues, dh, PROPS, u, states, states_old, nprops, t, Xnode)
             doassemble_neumann!(r, dh, getfacetset(grid, "right"), facetvalues, traction)
             #println("Assembled residual vector: ", r)
@@ -155,19 +154,22 @@ function solve()
             end
             Δu = Symmetric(K) \ r
             apply_zero!(Δu, dbcs)
-            α = 0.01  # step size scaling
-            u += α * Δu
+            # if maximum(abs, Δu) > 0.1   # or some reasonable threshold
+            #     println("Warning: Large displacement increment detected, scaling down Δu")
+            #     Δu .*= 1.e-10 / maximum(abs, Δu)
+            # end
+            u += Δu
             println("Max displacement: ", maximum(abs, u))
             println("Residual norm: ", norm_r)
         end
 
-        """for j in eachindex(states)
+        for j in eachindex(states)
             for i in eachindex(states[j])
-                states_old[j][i] .= states[j][i]
+                copyto!(states_old[j][i], states[j][i])
             end
-        end"""
+        end
 
-        states_old .= states
+        # states_old .= states
 
         println("First 10 statev after Newton step: ", states[1:min(10,end), 1])
         
