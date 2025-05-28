@@ -140,7 +140,7 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
     #println("node_ids = ", node_ids)
 
     X_nodes = [dh.grid.nodes[i].x for i in node_ids]  # reference coordinates as Vecs
-    println("X_nodes = ", X_nodes)
+    # println("X_nodes = ", X_nodes)
     X_nodes_mat = hcat(X_nodes...)'  # (n_nodes × 3) matrix, each row is a node
     #println("X_nodes_mat = ", X_nodes_mat)
     #println("ue = ", ue)
@@ -153,6 +153,15 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
     #for (i, dof) in enumerate(eldofs)
     #    println("Local node $(div(i-1,3)+1), dof $((i-1)%3+1): global dof $dof, value $(ue[i])")
     #end
+
+    # println("cell id: ", cellid(cell))
+    # println("node_ids: ", node_ids)
+    # println("X_nodes_mat (reference):")
+    # println(X_nodes_mat)
+    # println("u_mat (displacement):")
+    # println(u_mat)
+    # println("x_nodes (current):")
+    # println(x_nodes)
     
 
 
@@ -201,23 +210,25 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
         #     end
         # end            
 
-
         n_nodes = length(node_ids)
-        dNdξ = zeros(n_nodes, 3)
-        for i in 1:n_nodes
-            grad = shape_gradient(cellvalues, q_point, i)
-            if ndims(grad) == 1
-                dNdξ[i, :] = grad
-            else
-                # For vector-valued fields, extract the nonzero row
-                for row in eachrow(grad)
-                    if any(!iszero, row)
-                        dNdξ[i, :] = row
-                        break
-                    end
-                end
-            end
+        qr = QuadratureRule{RefHexahedron}(2)
+        interpolation = Lagrange{RefHexahedron, 1}()
+
+        ξ = Ferrite.getpoints(qr)[q_point]  # Reference coordinates of this quadrature point
+        dNdξ = zeros(8, 3)
+        for i in 1:8
+            dNdξ[i,:] =Ferrite.reference_shape_gradient(interpolation, ξ, i)
         end
+        # println("Quadrature point $q_point at ξ = $ξ:")
+        # println("Reference dNdξ =\n", dNdξ)
+
+        J_xξ = x_nodes' * dNdξ
+        J_Xξ = X_nodes_mat' * dNdξ
+
+        # println("J_xξ = ", J_xξ)
+
+        
+        
 
         """n_nodes = length(node_ids)
         dNdξ = zeros(n_nodes, 3)
@@ -246,11 +257,7 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
 
         # println("dNdξ = ", dNdξ)
 
-        J_xξ = x_nodes' * dNdξ
 
-        # println("J_xξ = ", J_xξ)
-
-        J_Xξ = X_nodes_mat' * dNdξ
         detJ = det(J_Xξ)
         F = J_xξ * inv(J_Xξ)
         # println("F = ", F)

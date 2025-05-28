@@ -30,7 +30,7 @@ function solve()
     # Define material properties in PROPS array
 
         PROPS = [
-        5,                        # 1: Power Series Strain Approximation (dimensionless)
+        2,                        # 1: Power Series Strain Approximation (dimensionless)
         1470.588416e6,            # 2: Bulk Modulus [Pa]
         563.9098439e6,            # 3: Shear Modulus [Pa]
         5.900948586,              # 4: Yield Exponent (dimensionless)
