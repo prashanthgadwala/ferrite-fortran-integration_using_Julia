@@ -1,50 +1,9 @@
 using Ferrite, Tensors, SparseArrays, LinearAlgebra, Printf
 
-
-"""
-# Define material properties
-struct J2Plasticity{T, S <: SymmetricTensor{4, 3, T}}
-    G::T  # Shear modulus
-    K::T  # Bulk modulus
-    σ₀::T # Initial yield limit
-    H::T  # Hardening modulus
-    Dᵉ::S # Elastic stiffness tensor
-end
-
-
-
-function J2Plasticity(E, ν, σ₀, H)
-    δ(i,j) = i == j ? 1.0 : 0.0 # helper function
-    G = E / 2(1 + ν)
-    K = E / 3(1 - 2ν)
-
-    Isymdev(i,j,k,l) = 0.5*(δ(i,k)*δ(j,l) + δ(i,l)*δ(j,k)) - 1.0/3.0*δ(i,j)*δ(k,l)
-    temp(i,j,k,l) = 2.0G *( 0.5*(δ(i,k)*δ(j,l) + δ(i,l)*δ(j,k)) + ν/(1.0-2.0ν)*δ(i,j)*δ(k,l))
-    Dᵉ = SymmetricTensor{4, 3}(temp)
-    return J2Plasticity(G, K, σ₀, H, Dᵉ)
-end
-
-struct MaterialState{T, S <: SecondOrderTensor{3, T}}
-    ϵᵖ::S # plastic strain
-    σ::S  # stress
-    k::T  # hardening variable
-end
-
-function MaterialState()
-    return MaterialState(
-        zero(SymmetricTensor{2, 3}),
-        zero(SymmetricTensor{2, 3}),
-        0.0
-    )
-end
-
-"""
-
 function doassemble_neumann!(r, dh, facetset, facetvalues, t)
     n_basefuncs = getnbasefunctions(facetvalues)
-    re = zeros(n_basefuncs)                      # element residual vector
+    re = zeros(n_basefuncs)
     for fc in FacetIterator(dh, facetset)
-        # Add traction as a negative contribution to the element residual `re`:
         reinit!(facetvalues, fc)
         fill!(re, 0)
         for q_point in 1:getnquadpoints(facetvalues)
@@ -60,45 +19,89 @@ function doassemble_neumann!(r, dh, facetset, facetvalues, t)
 end
 
 
+function Tcompute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, statev::Vector{Float64}, PROPS::Vector{Float64}, nprops::Int, t::Int64, F::Matrix{Float64})
+    # Use only the first two props for linear elasticity
+    K = PROPS[2]  # Bulk modulus
+    G = PROPS[3]  # Shear modulus
 
-function compute_stress_tangent(ϵ::SymmetricTensor{2, 3}, G::Float64, H::Float64, σ₀::Float64, Dᵉ::SymmetricTensor{4, 3}, state::MaterialState)
-    # We use (•)ᵗ to denote *trial*-values
-    σᵗ = Dᵉ ⊡ (ϵ - state.ϵᵖ) # trial-stress
-    sᵗ = dev(σᵗ)         # deviatoric part of trial-stress
-    J₂ = 0.5 * sᵗ ⊡ sᵗ   # second invariant of sᵗ
-    σᵗₑ = sqrt(3.0*J₂)   # effective trial-stress (von Mises stress)
-    σʸ = σ₀ + H * state.k # Previous yield limit
+    # Lame parameters
+    λ = K - 2/3 * G
+    μ = G
 
-    φᵗ  = σᵗₑ - σʸ # Trial-value of the yield surface
+    # Voigt: [11, 22, 33, 12, 13, 23]
+    σ = zeros(6)
+    D = zeros(6,6)
 
-    if φᵗ < 0.0 # elastic loading
-        return σᵗ, Dᵉ, MaterialState(state.ϵᵖ, σᵗ, state.k)
-    else # plastic loading
-        h = H + 3G
-        μ =  φᵗ / h   # plastic multiplier
+    # Stress: σ = λ tr(ϵ) I + 2μ ϵ
+    trϵ = ϵ[1] + ϵ[2] + ϵ[3]
+    σ[1] = λ*trϵ + 2μ*ϵ[1]
+    σ[2] = λ*trϵ + 2μ*ϵ[2]
+    σ[3] = λ*trϵ + 2μ*ϵ[3]
+    σ[4] = 2μ*ϵ[4]
+    σ[5] = 2μ*ϵ[5]
+    σ[6] = 2μ*ϵ[6]
 
-        c1 = 1 - 3G * μ / σᵗₑ
-        s = c1 * sᵗ           # updated deviatoric stress
-        σ = s + vol(σᵗ)        # updated stress
-
-        # Compute algorithmic tangent stiffness ``D = \frac{\Delta \sigma }{\Delta \epsilon}``
-        κ = H * (state.k + μ) # drag stress
-        σₑ = σ₀ + κ  # updated yield surface
-
-        δ(i,j) = i == j ? 1.0 : 0.0
-        Isymdev(i,j,k,l)  = 0.5*(δ(i,k)*δ(j,l) + δ(i,l)*δ(j,k)) - 1.0/3.0*δ(i,j)*δ(k,l)
-        Q(i,j,k,l) = Isymdev(i,j,k,l) - 3.0 / (2.0*σₑ^2) * s[i,j]*s[k,l]
-        b = (3G*μ/σₑ) / (1.0 + 3G*μ/σₑ)
-
-        Dtemp(i,j,k,l) = -2G*b * Q(i,j,k,l) - 9G^2 / (h*σₑ^2) * s[i,j]*s[k,l]
-        D = Dᵉ + SymmetricTensor{4, 3}(Dtemp)
-
-        # Return new state
-        Δϵᵖ = 3/2 * μ / σₑ * s # plastic strain
-        ϵᵖ = state.ϵᵖ + Δϵᵖ    # plastic strain
-        k = state.k + μ        # hardening variable
-        return σ, D, MaterialState(ϵᵖ, σ, k)
+    # Consistent tangent for isotropic elasticity
+    for i in 1:3, j in 1:3
+        D[i,j] = λ
     end
+    for i in 1:3
+        D[i,i] += 2μ
+    end
+    for i in 4:6
+        D[i,i] = 2μ
+    end
+
+    return σ, D, statev
+end
+
+function compute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, statev::Vector{Float64}, PROPS::Vector{Float64}, nprops::Int, t::Int64, F::Matrix{Float64})
+    stress = zeros(6)
+    ddsdde = zeros(6, 6)
+    sse, spd, scd, rpl, ddsddt, drplde, drpldt = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    stran = ϵ
+    dstran = dϵ
+    time = [0.0, t]
+    dtime = 1.0
+    temp, dtemp, predef, dpred = 0.0, 0.0, 0.0, 0.0
+    cmname = "VEVP"
+    ndi, nshr, ntens, nstatv = 3, 3, 6, length(statev)
+    coords = zeros(3)
+    drot = zeros(3, 3)
+    pnewdt = 0.0
+    celent = 1.0
+    dfgrd0 = Matrix{Float64}(I, 3, 3)
+    dfgrd1 = F
+    noel, npt, layer, kspt, kstep, kinc = 1, 1, 1, 1, 1, 1
+
+    """println("==== UMAT INPUT CHECK ====")
+    println("stran: ", stran)
+    println("dstran: ", dstran)
+    println("F (dfgrd1): ", dfgrd1)
+    println("statev (first 10): ", statev[1:10])
+    println("props (first 10): ", PROPS[1:10])
+    println("dtime: ", dtime)
+    println("noel: ", noel, " npt: ", npt)
+    println("==========================")"""
+
+    if any(isnan, stran) || any(isinf, stran)
+        error("NaN or Inf in strain input to UMAT")
+    end
+    if any(isnan, dfgrd1) || any(isinf, dfgrd1)
+        error("NaN or Inf in deformation gradient input to UMAT")
+    end
+    if any(isnan, statev) || any(isinf, statev)
+        error("NaN or Inf in statev input to UMAT")
+    end
+
+    call_umat(
+        stress, statev, ddsdde, sse, spd, scd, rpl, ddsddt, drplde, drpldt,
+        stran, dstran, time, dtime, temp, dtemp, predef, dpred, cmname,
+        ndi, nshr, ntens, nstatv, PROPS, nprops, coords, drot, pnewdt,
+        celent, dfgrd0, dfgrd1, noel, npt, layer, kspt, kstep, kinc
+    )
+
+    return stress, ddsdde, statev
 end
 
 function create_values(interpolation)
@@ -123,34 +126,229 @@ end
 function create_bc(dh, grid)
     dbcs = ConstraintHandler(dh)
     # Clamped on the left side
-    dofs = [1, 2, 3]
-    dbc = Dirichlet(:u, getfacetset(grid, "left"), (x, t) -> [0.0, 0.0, 0.0], dofs)
+    dbc = Dirichlet(:u, getfacetset(grid, "left"), (x, t) -> [0.0, 0.0, 0.0], [1, 2, 3])
     add!(dbcs, dbc)
     close!(dbcs)
     return dbcs
 end
 
-function assemble_cell!(Ke, re, cell, cellvalues, G, H, σ₀, Dᵉ, ue, state, state_old)
+function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, state_old, t, dh)
     n_basefuncs = getnbasefunctions(cellvalues)
     reinit!(cellvalues, cell)
 
-    for q_point in 1:getnquadpoints(cellvalues)
-        # For each integration point, compute stress and material stiffness
-        ϵ = function_symmetric_gradient(cellvalues, q_point, ue) # Total strain
-        σ, D, state[q_point] = compute_stress_tangent(ϵ, G, H, σ₀, Dᵉ, state_old[q_point])
+    node_ids = getnodes(cell)  # global node indices for this cell
+    #println("node_ids = ", node_ids)
 
-        dΩ = getdetJdV(cellvalues, q_point)
+    X_nodes = [dh.grid.nodes[i].x for i in node_ids]  # reference coordinates as Vecs
+    # println("X_nodes = ", X_nodes)
+    X_nodes_mat = hcat(X_nodes...)'  # (n_nodes × 3) matrix, each row is a node
+    #println("X_nodes_mat = ", X_nodes_mat)
+    #println("ue = ", ue)
+    u_mat = reshape(ue, 3, :)'  # (n_nodes × 3) for 3D
+    #println("u_mat = ", u_mat)
+    x_nodes = X_nodes_mat .+ u_mat  # (n_nodes × 3) current coordinates#
+    #println("x_nodes = ", x_nodes)
+    #println("Element size: ", maximum(X_nodes_mat, dims=1) - minimum(X_nodes_mat, dims=1))
+    #eldofs = celldofs(cell)
+    #for (i, dof) in enumerate(eldofs)
+    #    println("Local node $(div(i-1,3)+1), dof $((i-1)%3+1): global dof $dof, value $(ue[i])")
+    #end
+
+    # println("cell id: ", cellid(cell))
+    # println("node_ids: ", node_ids)
+    # println("X_nodes_mat (reference):")
+    # println(X_nodes_mat)
+    # println("u_mat (displacement):")
+    # println(u_mat)
+    # println("x_nodes (current):")
+    # println(x_nodes)
+    
+
+
+    for q_point in 1:getnquadpoints(cellvalues)
+        # Compute total strain at this quadrature point
+        ϵ_ = function_symmetric_gradient(cellvalues, q_point, ue)
+        #println("ϵ_ = ", ϵ_)
+        ϵ = tensor_to_voigt6(ϵ_)
+        #println("max(abs, ϵ) = ", maximum(abs, ϵ))
+        #println("ϵ = ", ϵ)
+
+        # Compute previous strain if you want to use strain increment
+
+        dϵ = zeros(6)
+
+
+        # Now dNdξ_fixed[i, :] is the gradient vector for node i
+
+        # dNdξ = [shape_gradient(cellvalues, q_point, i) for i in 1:length(node_ids)]
+        # println("dNdξ before = ", dNdξ)
+        # println("dNdξ (shape gradients) = ", size(dNdξ))
+        # dNdξ = hcat(dNdξ...)'  # (n_nodes × 3) matrix, each row is a node gradient
+        # println("dNdξ = ", dNdξ)
+
+        # dNdξ = zeros(n_nodes, 3)
+        # for i in 1:n_nodes
+        #     dNdξ[i, :] = Ferrite.reference_shape_gradient(interp, ξ, i)
+        # end
+
+
+        # n_nodes = length(node_ids)
+        # dNdξ = zeros(n_nodes, 3)
+        # for i in 1:n_nodes
+        #     grad = shape_gradient(cellvalues, q_point, i)
+        #     # If grad is a 3-vector, just assign
+        #     if ndims(grad) == 1
+        #         dNdξ[i, :] = grad
+        #     else
+        #         # For vector-valued, extract the nonzero row
+        #         for row in eachrow(grad)
+        #             if any(!iszero, row)
+        #                 dNdξ[i, :] = row
+        #                 break
+        #             end
+        #         end
+        #     end
+        # end            
+
+        n_nodes = length(node_ids)
+        qr = QuadratureRule{RefHexahedron}(2)
+        interpolation = Lagrange{RefHexahedron, 1}()
+
+        ξ = Ferrite.getpoints(qr)[q_point]  # Reference coordinates of this quadrature point
+        dNdξ = zeros(8, 3)
+        for i in 1:8
+            dNdξ[i,:] =Ferrite.reference_shape_gradient(interpolation, ξ, i)
+        end
+        # println("Quadrature point $q_point at ξ = $ξ:")
+        # println("Reference dNdξ =\n", dNdξ)
+
+        J_xξ = x_nodes' * dNdξ
+        J_Xξ = X_nodes_mat' * dNdξ
+
+        # println("J_xξ = ", J_xξ)
+
+        
+        
+
+        """n_nodes = length(node_ids)
+        dNdξ = zeros(n_nodes, 3)
+        for i in 1:n_nodes
+            grad = shape_gradient(cellvalues, q_point, i)
+            dNdξ[i, :] = grad[:, 1]  # Always take the first column for geometry
+        end
+        """
+        
+        
+        # println("dNdξ = ", dNdξ)
+        # println("x_nodes = ", x_nodes)
+
+        """ n_nodes = length(node_ids)
+        dNdξ = zeros(n_nodes, 3)
+        for i in 1:n_nodes
+            # This gives you the 3-vector gradient for node i
+            dNdξ[i, :] = shape_gradient(cellvalues, q_point, i)[:, 1]
+        end
+        
+
+        """
+
+        # dNdξ = Ferrite.getpoints(qr)
+        # dNdξ = hcat(dNdξ...)' 
+
+        # println("dNdξ = ", dNdξ)
+
+
+        detJ = det(J_Xξ)
+        F = J_xξ * inv(J_Xξ)
+        # println("F = ", F)
+
+            # DEBUG: Print info if F is "bad"
+        # if any(abs.(F) .> 2.0)  # or use your own threshold
+        #     println("==== BAD F DETECTED ====")
+        #     println("cell id: ", cellid(cell))
+        #     println("q_point: ", q_point)
+        #     println("node_ids: ", node_ids)
+        #     println("X_nodes_mat (reference):\n", X_nodes_mat)
+        #     println("x_nodes (current):\n", x_nodes)
+        #     println("dNdξ:\n", dNdξ)
+        #     println("J_xξ:\n", J_xξ)
+        #     println("J_Xξ:\n", J_Xξ)
+        #     println("detJ: ", detJ)
+        #     println("F:\n", F)
+        #     println("=======================")
+        # end
+
+
+        # Call UMAT-based stress/tangent state[q_point]
+        σ, D, state[q_point] = compute_stress_tangent(ϵ, dϵ, state_old[q_point], PROPS, nprops, t, F)
+        
+        if any(isnan, D) || any(isinf, D)
+            @show ue, ϵ, F, state_old[q_point], σ, D
+            error("NaN or Inf detected in tangent matrix D at step $t, q_point $q_point")
+        end
+        if any(isnan, ue) || any(isinf, ue)
+            error("NaN or Inf detected in element displacement ue")
+        end
+        if any(isnan, F) || any(isinf, F)
+            error("NaN or Inf detected in deformation gradient F")
+        end 
+
+        # dΩ = getdetJdV(cellvalues, q_point)
+        # w_q = Ferrite.getweights(cellvalues.qr)[q_point]
+        # println("q_point = ", q_point, ", detJ = ", detJ, ", w_q = ", w_q, ", dΩ = ", dΩ)
+
+        w_q = Ferrite.getweights(cellvalues.qr)[q_point]
+        dΩ = detJ * w_q
+        # println("q_point = ", q_point, ", detJ = ", detJ, ", w_q = ", w_q, ", dΩ = ", dΩ)
+
         for i in 1:n_basefuncs
-            δϵ = shape_symmetric_gradient(cellvalues, q_point, i)
-            re[i] += (δϵ ⊡ σ) * dΩ # add internal force to residual
-            for j in 1:i # loop only over lower half
-                Δϵ = shape_symmetric_gradient(cellvalues, q_point, j)
-                Ke[i, j] += δϵ ⊡ D ⊡ Δϵ * dΩ
+            δϵ_ = shape_symmetric_gradient(cellvalues, q_point, i)
+            δϵ = tensor_to_voigt6(δϵ_)
+            #println("δϵ = ", δϵ)
+            #println("σ = ", σ)
+            #println("D = ", D)
+            re[i] += dot(δϵ, σ) * dΩ
+            #println("re[$i] = ", re[i])
+            for j in 1:i
+                Δϵ_ = shape_symmetric_gradient(cellvalues, q_point, j)
+                Δϵ = tensor_to_voigt6(Δϵ_)
+                Ke[i, j] += δϵ' * D * Δϵ * dΩ
+                #println("Ke[$i, $j] = ", Ke[i, j])
             end
         end
+
     end
+    #println("Ke = ", Ke)
+    #println("re = ", re)
+    #println("σ = ", σ)
+    #println("D = ", D)
     symmetrize_lower!(Ke)
 end
+
+
+# 3x3 matrix to 9-component Voigt vector (Fortran order)
+function tensor_to_voigt(mat::AbstractMatrix)
+    return [
+        mat[1,1], mat[2,2], mat[3,3],
+        mat[1,2], mat[1,3], mat[2,3],
+        mat[2,1], mat[3,1], mat[3,2]
+    ]
+end
+
+# 9-component Voigt vector to 3x3 matrix (Fortran order)
+function voigt_to_tensor(voit::AbstractVector)
+    return [
+        voit[1] voit[4] voit[5];
+        voit[4] voit[2] voit[6];
+        voit[5] voit[6] voit[3]
+    ]
+end
+
+function tensor_to_voigt6(mat::AbstractMatrix)
+    # For symmetric 3x3 tensor: [11, 22, 33, 12, 13, 23]
+    return [mat[1,1], mat[2,2], mat[3,3], mat[1,2], mat[1,3], mat[2,3]]
+end
+
 
 function symmetrize_lower!(K)
     for i in 1:size(K,1)
@@ -161,16 +359,7 @@ function symmetrize_lower!(K)
 end;
 
 function doassemble!(K::SparseMatrixCSC, r::Vector, cellvalues::CellValues, dh::DofHandler,
-                     props::Vector{Float64}, u, states, states_old)
-    # Extract material properties from PROPS
-    G = props[2] / (2 * (1 + props[3])) # Shear modulus
-    H = props[5]                        # Hardening modulus
-    σ₀ = props[4]                       # Initial yield stress
-    ν = props[3]                        # Poisson's ratio
-    δ(i,j) = i == j ? 1.0 : 0.0
-    temp(i,j,k,l) = 2.0 * G * (0.5 * (δ(i,k)*δ(j,l) + δ(i,l)*δ(j,k)) + ν / (1.0 - 2.0 * ν) * δ(i,j)*δ(k,l))
-    Dᵉ = SymmetricTensor{4, 3}(temp)
-
+                     PROPS::Vector{Float64}, u, states, states_old, nprops, t)
     assembler = start_assemble(K, r)
     nu = getnbasefunctions(cellvalues)
     re = zeros(nu)     # element residual vector
@@ -184,9 +373,27 @@ function doassemble!(K::SparseMatrixCSC, r::Vector, cellvalues::CellValues, dh::
 
         state = @view states[:, i]
         state_old = @view states_old[:, i]
-        # Pass material properties explicitly to assemble_cell!
-        assemble_cell!(ke, re, cell, cellvalues, G, H, σ₀, Dᵉ, ue, state, state_old)
+        # Call UMAT-based assembly
+        assemble_cell!(ke, re, cell, cellvalues, PROPS, nprops, ue, state, state_old, t, dh)
         assemble!(assembler, eldofs, ke, re)
     end
     return K, r
 end
+
+"""
+function debug_compare_models(PROPS)
+    ϵ = [0.01, 0.0, 0.0, 0.0, 0.0, 0.0]
+    dϵ = [0.01, 0.0, 0.0, 0.0, 0.0, 0.0]
+    statev = zeros(108)
+    F = Matrix{Float64}(I, 3, 3)
+    F[1,1] = 1.01
+    t = 1
+    nprops = length(PROPS)
+
+    σ_umat, D_umat, statev_new = compute_stress_tangent(ϵ, dϵ, statev, PROPS, nprops, t, F)
+    println("UMAT stress: ", σ_umat)
+    println("UMAT tangent: ", D_umat)
+    println("UMAT statev (first 10): ", statev_new[1:10])
+end
+
+"""

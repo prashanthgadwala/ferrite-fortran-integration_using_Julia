@@ -144,6 +144,7 @@ function assemble_cell!(Ke, re, cell, cellvalues, material,
         σ, D, state[q_point] = compute_stress_tangent(ϵ, material, state_old[q_point])
 
         dΩ = getdetJdV(cellvalues, q_point)
+        println("q_point: $q_point, dΩ: $dΩ, σ: $σ, D: $D")
         for i in 1:n_basefuncs
             δϵ = shape_symmetric_gradient(cellvalues, q_point, i)
             re[i] += (δϵ ⊡ σ) * dΩ # add internal force to residual
@@ -168,7 +169,6 @@ function doassemble_neumann!(r, dh, facetset, facetvalues, t)
     n_basefuncs = getnbasefunctions(facetvalues)
     re = zeros(n_basefuncs)                      # element residual vector
     for fc in FacetIterator(dh, facetset)
-        # Add traction as a negative contribution to the element residual `re`:
         reinit!(facetvalues, fc)
         fill!(re, 0)
         for q_point in 1:getnquadpoints(facetvalues)
@@ -253,7 +253,12 @@ function solve()
                 break
             end
 
+            println("r before apply_zero! at constrained DOFs: ", count(iszero, r))
+
             apply_zero!(K, r, dbcs)
+
+            println("r after apply_zero! at constrained DOFs: ", count(iszero, r))
+
             Δu = Symmetric(K) \ r
             u -= Δu
         end
