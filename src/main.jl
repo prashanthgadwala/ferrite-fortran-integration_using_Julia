@@ -1,5 +1,7 @@
 include("./PREPROCESSING/Vevp_PreProcessing.jl")
 include("./POSTPROCESSING/Vevp_PostProcess.jl")
+using Plots
+using .POSTPROCESSING.Vevp_PostProcess
 
 # Wrapper function to call the Fortran UMAT subroutine
 function call_umat(stress, statev, ddsdde, sse, spd, scd, rpl, ddsddt, drplde, drpldt,
@@ -128,6 +130,11 @@ function solve()
     traction_magnitude = 1.e-3 * range(0.1, 1.0, length=n_timesteps)
     NEWTON_TOL = 1e-6
 
+
+    strain_history = Float64[]
+    stress_history = Float64[]
+    time = collect(1:n_timesteps) 
+
     for timestep in 1:n_timesteps
         t = timestep
         traction = Vec((0.0, 0.0, traction_magnitude[timestep]))
@@ -135,6 +142,7 @@ function solve()
         print("\n Time step @time = $timestep:\n")
         update!(dbcs, t)
         apply!(u, dbcs)
+
     
         while true; newton_itr += 1
             doassemble!(K, r, cellvalues, dh, PROPS, u, states, states_old, nprops, t)
@@ -159,6 +167,8 @@ function solve()
             #     Δu .*= 1.e-10 / maximum(abs, Δu)
             # end
             u -= Δu
+            push!(strain_history, extract_avg_true_strain(states))
+            push!(stress_history, extract_avg_sigma11(states))
             println("Max displacement: ", maximum(abs, u))
             println("Residual norm: ", norm_r)
         end
@@ -175,6 +185,23 @@ function solve()
         
         u_max[timestep] = maximum(abs, u)
     end
+    
+    # After solve loop
+    mises = extract_vonmises(states)
+    sigma11 = extract_sigma11(states)
+    disp_mag = extract_disp_mag(u, grid)
+    
+    # Optionally plot or print
+
+    plot(mises, title="Von Mises Stress per Element")
+    plot(sigma11, title="Sigma_11 per Element")
+    scatter(disp_mag, title="Displacement Magnitude at Nodes")
+    plot_true_strain_vs_time(strain_history, time)
+    plot_stress_vs_strain(stress_history, strain_history)
+    plot_traction_vs_displacement(u_max, traction_magnitude)
+    
+    # Or call postprocess as before for VTK and all plots
+    postprocess(grid, dh, states, PROPS, u)
 
     # Postprocessing
     # postprocess(grid, dh, states, PROPS, u)
