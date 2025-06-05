@@ -31,31 +31,31 @@ function solve()
 
         PROPS = [
         2,                        # 1: Power Series Strain Approximation (dimensionless)
-        1470.588416e6,            # 2: Bulk Modulus [Pa]
-        563.9098439e6,            # 3: Shear Modulus [Pa]
+        1470.588416,            # 2: Bulk Modulus [Pa]
+        563.9098439,            # 3: Shear Modulus [Pa]
         5.900948586,              # 4: Yield Exponent (dimensionless)
         0.33,                     # 5: Plastic Poisson Ratio (dimensionless)
         0.001,                    # 6: Viscoplastic Coefficient (dimensionless)
         10,                       # 7: Viscoplastic Exponent (dimensionless)
-        2.086229688e6,            # 8: Initial Yield Limit - Compression [Pa]
-        2164.115496e6,            # 9: Isotropic Hardening Parameter - Compression [Pa]
-        4.450073598e6,            # 10: Isotropic Hardening Parameter - Compression [Pa]
-        5401.554318e6,            # 11: Isotropic Hardening Parameter - Compression [Pa]
-        1.66898375e6,             # 12: Initial Yield Limit - Tension [Pa]
-        1731.292397e6,            # 13: Isotropic Hardening Parameter – Tension [Pa]
-        3.560058879e6,            # 14: Isotropic Hardening Parameter – Tension [Pa]
-        5401.554318e6,            # 15: Isotropic Hardening Parameter – Tension [Pa]
+        2.086229688,            # 8: Initial Yield Limit - Compression [Pa]
+        2164.115496,            # 9: Isotropic Hardening Parameter - Compression [Pa]
+        4.450073598,            # 10: Isotropic Hardening Parameter - Compression [Pa]
+        5401.554318,            # 11: Isotropic Hardening Parameter - Compression [Pa]
+        1.66898375,             # 12: Initial Yield Limit - Tension [Pa]
+        1731.292397,            # 13: Isotropic Hardening Parameter – Tension [Pa]
+        3.560058879,            # 14: Isotropic Hardening Parameter – Tension [Pa]
+        5401.554318,            # 15: Isotropic Hardening Parameter – Tension [Pa]
         0,                        # 16: Kinematic Hardening Parameter (dimensionless)
         0,                        # 17: Kinematic Hardening Parameter (dimensionless)
         0,                        # 18: Kinematic Hardening Parameter (dimensionless)
-        298.5381412e6,            # 19: Bulk Modulus – Maxwell branch 1 [Pa]
-        128.572959e6,             # 20: Bulk Modulus – Maxwell branch 2 [Pa]
-        126.0116202e6,            # 21: Bulk Modulus – Maxwell branch 3 [Pa]
-        56.16237131e6,            # 22: Bulk Modulus – Maxwell branch 4 [Pa]
-        73.29632907e6,            # 23: Bulk Modulus – Maxwell branch 5 [Pa]
-        34.58797299e6,            # 24: Bulk Modulus – Maxwell branch 6 [Pa]
-        25.90272535e6,            # 25: Bulk Modulus – Maxwell branch 7 [Pa]
-        117.6700904e6,            # 26: Bulk Modulus – Maxwell branch 8 [Pa]
+        298.5381412,            # 19: Bulk Modulus – Maxwell branch 1 [Pa]
+        128.572959,             # 20: Bulk Modulus – Maxwell branch 2 [Pa]
+        126.0116202,            # 21: Bulk Modulus – Maxwell branch 3 [Pa]
+        56.16237131,            # 22: Bulk Modulus – Maxwell branch 4 [Pa]
+        73.29632907,            # 23: Bulk Modulus – Maxwell branch 5 [Pa]
+        34.58797299,            # 24: Bulk Modulus – Maxwell branch 6 [Pa]
+        25.90272535,            # 25: Bulk Modulus – Maxwell branch 7 [Pa]
+        117.6700904,            # 26: Bulk Modulus – Maxwell branch 8 [Pa]
         1000.0,                   # 27: Volumetric Relaxation Time – Maxwell Branch 1 [s]
         100.0,                    # 28: Volumetric Relaxation Time – Maxwell Branch 2 [s]
         10.0,                     # 29: Volumetric Relaxation Time – Maxwell Branch 3 [s]
@@ -64,14 +64,14 @@ function solve()
         0.01,                     # 32: Volumetric Relaxation Time – Maxwell Branch 6 [s]
         0.001,                    # 33: Volumetric Relaxation Time – Maxwell Branch 7 [s]
         0.0001,                   # 34: Volumetric Relaxation Time – Maxwell Branch 8 [s]
-        114.4770316e6,            # 35: Shear Modulus – Maxwell branch 1 [Pa]
-        49.30241285e6,            # 36: Shear Modulus – Maxwell branch 2 [Pa]
-        48.32024532e6,            # 37: Shear Modulus – Maxwell branch 3 [Pa]
-        21.53594689e6,            # 38: Shear Modulus – Maxwell branch 4 [Pa]
-        28.10611115e6,            # 39: Shear Modulus – Maxwell branch 5 [Pa]
-        13.26305731e6,            # 40: Shear Modulus – Maxwell branch 6 [Pa]
-        9.932624005e6,            # 41: Shear Modulus – Maxwell branch 7 [Pa]
-        45.1216136e6,             # 42: Shear Modulus – Maxwell branch 8 [Pa]
+        114.4770316,            # 35: Shear Modulus – Maxwell branch 1 [Pa]
+        49.30241285,            # 36: Shear Modulus – Maxwell branch 2 [Pa]
+        48.32024532,            # 37: Shear Modulus – Maxwell branch 3 [Pa]
+        21.53594689,            # 38: Shear Modulus – Maxwell branch 4 [Pa]
+        28.10611115,            # 39: Shear Modulus – Maxwell branch 5 [Pa]
+        13.26305731,            # 40: Shear Modulus – Maxwell branch 6 [Pa]
+        9.932624005,            # 41: Shear Modulus – Maxwell branch 7 [Pa]
+        45.1216136,             # 42: Shear Modulus – Maxwell branch 8 [Pa]
         1000.0,                   # 43: Deviatoric Relaxation Time – Maxwell Branch 1 [s]
         100.0,                    # 44: Deviatoric Relaxation Time – Maxwell Branch 2 [s]
         10.0,                     # 45: Deviatoric Relaxation Time – Maxwell Branch 3 [s]
@@ -123,7 +123,7 @@ function solve()
 
 
     # Newton-Raphson loop
-    n_timesteps = 2
+    n_timesteps = 10
     u_max = zeros(n_timesteps)
     traction_magnitude = 1.e-3 * range(0.1, 1.0, length=n_timesteps)
     NEWTON_TOL = 1e-6
@@ -165,20 +165,20 @@ function solve()
 
         for j in eachindex(states)
             for i in eachindex(states[j])
-                copyto!(states_old[j][i], states[j][i])
+                states_old[j][i] = states[j][i]
             end
         end
 
         # states_old .= states
 
-        println("First 10 statev after Newton step: ", states[1:min(10,end), 1])
+        # println("First 10 statev after Newton step: ", states[1:min(10,end), 1])
         
         u_max[timestep] = maximum(abs, u)
     end
 
     # Postprocessing
-    postprocess(grid, dh, states, PROPS, u)
-    plot_traction_displacement(u_max, traction_magnitude)
+    # postprocess(grid, dh, states, PROPS, u)
+    # plot_traction_displacement(u_max, traction_magnitude)
 
 end
 
