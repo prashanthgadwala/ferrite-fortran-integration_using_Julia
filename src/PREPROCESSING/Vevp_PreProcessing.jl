@@ -19,41 +19,6 @@ function doassemble_neumann!(r, dh, facetset, facetvalues, t)
 end
 
 
-function Tcompute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, statev::Vector{Float64}, PROPS::Vector{Float64}, nprops::Int, t::Int64, F::Matrix{Float64})
-    # Use only the first two props for linear elasticity
-    K = PROPS[2]  # Bulk modulus
-    G = PROPS[3]  # Shear modulus
-
-    # Lame parameters
-    λ = K - 2/3 * G
-    μ = G
-
-    # Voigt: [11, 22, 33, 12, 13, 23]
-    σ = zeros(6)
-    D = zeros(6,6)
-
-    # Stress: σ = λ tr(ϵ) I + 2μ ϵ
-    trϵ = ϵ[1] + ϵ[2] + ϵ[3]
-    σ[1] = λ*trϵ + 2μ*ϵ[1]
-    σ[2] = λ*trϵ + 2μ*ϵ[2]
-    σ[3] = λ*trϵ + 2μ*ϵ[3]
-    σ[4] = 2μ*ϵ[4]
-    σ[5] = 2μ*ϵ[5]
-    σ[6] = 2μ*ϵ[6]
-
-    # Consistent tangent for isotropic elasticity
-    for i in 1:3, j in 1:3
-        D[i,j] = λ
-    end
-    for i in 1:3
-        D[i,i] += 2μ
-    end
-    for i in 4:6
-        D[i,i] = 2μ
-    end
-
-    return σ, D, statev
-end
 
 function compute_stress_tangent(ϵ::Vector{Float64}, dϵ::Vector{Float64}, statev::Vector{Float64}, PROPS::Vector{Float64}, nprops::Int, t::Int64, F::Matrix{Float64})
     stress = zeros(6)
@@ -137,79 +102,20 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
     reinit!(cellvalues, cell)
 
     node_ids = getnodes(cell)  # global node indices for this cell
-    #println("node_ids = ", node_ids)
-
     X_nodes = [dh.grid.nodes[i].x for i in node_ids]  # reference coordinates as Vecs
-    # println("X_nodes = ", X_nodes)
     X_nodes_mat = hcat(X_nodes...)'  # (n_nodes × 3) matrix, each row is a node
-    #println("X_nodes_mat = ", X_nodes_mat)
-    #println("ue = ", ue)
     u_mat = reshape(ue, 3, :)'  # (n_nodes × 3) for 3D
-    #println("u_mat = ", u_mat)
     x_nodes = X_nodes_mat .+ u_mat  # (n_nodes × 3) current coordinates#
-    #println("x_nodes = ", x_nodes)
-    #println("Element size: ", maximum(X_nodes_mat, dims=1) - minimum(X_nodes_mat, dims=1))
-    #eldofs = celldofs(cell)
-    #for (i, dof) in enumerate(eldofs)
-    #    println("Local node $(div(i-1,3)+1), dof $((i-1)%3+1): global dof $dof, value $(ue[i])")
-    #end
-
-    # println("cell id: ", cellid(cell))
-    # println("node_ids: ", node_ids)
-    # println("X_nodes_mat (reference):")
-    # println(X_nodes_mat)
-    # println("u_mat (displacement):")
-    # println(u_mat)
-    # println("x_nodes (current):")
-    # println(x_nodes)
-    
 
 
     for q_point in 1:getnquadpoints(cellvalues)
         # Compute total strain at this quadrature point
         ϵ_ = function_symmetric_gradient(cellvalues, q_point, ue)
-        #println("ϵ_ = ", ϵ_)
         ϵ = tensor_to_voigt6(ϵ_)
-        #println("max(abs, ϵ) = ", maximum(abs, ϵ))
-        #println("ϵ = ", ϵ)
-
         # Compute previous strain if you want to use strain increment
 
         dϵ = zeros(6)
-
-
-        # Now dNdξ_fixed[i, :] is the gradient vector for node i
-
-        # dNdξ = [shape_gradient(cellvalues, q_point, i) for i in 1:length(node_ids)]
-        # println("dNdξ before = ", dNdξ)
-        # println("dNdξ (shape gradients) = ", size(dNdξ))
-        # dNdξ = hcat(dNdξ...)'  # (n_nodes × 3) matrix, each row is a node gradient
-        # println("dNdξ = ", dNdξ)
-
-        # dNdξ = zeros(n_nodes, 3)
-        # for i in 1:n_nodes
-        #     dNdξ[i, :] = Ferrite.reference_shape_gradient(interp, ξ, i)
-        # end
-
-
-        # n_nodes = length(node_ids)
-        # dNdξ = zeros(n_nodes, 3)
-        # for i in 1:n_nodes
-        #     grad = shape_gradient(cellvalues, q_point, i)
-        #     # If grad is a 3-vector, just assign
-        #     if ndims(grad) == 1
-        #         dNdξ[i, :] = grad
-        #     else
-        #         # For vector-valued, extract the nonzero row
-        #         for row in eachrow(grad)
-        #             if any(!iszero, row)
-        #                 dNdξ[i, :] = row
-        #                 break
-        #             end
-        #         end
-        #     end
-        # end            
-
+      
         n_nodes = length(node_ids)
         qr = QuadratureRule{RefHexahedron}(2)
         interpolation = Lagrange{RefHexahedron, 1}()
@@ -219,65 +125,14 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
         for i in 1:8
             dNdξ[i,:] =Ferrite.reference_shape_gradient(interpolation, ξ, i)
         end
-        # println("Quadrature point $q_point at ξ = $ξ:")
-        # println("Reference dNdξ =\n", dNdξ)
-
         J_xξ = x_nodes' * dNdξ
         J_Xξ = X_nodes_mat' * dNdξ
 
-        # println("J_xξ = ", J_xξ)
-
-        
-        
-
-        """n_nodes = length(node_ids)
-        dNdξ = zeros(n_nodes, 3)
-        for i in 1:n_nodes
-            grad = shape_gradient(cellvalues, q_point, i)
-            dNdξ[i, :] = grad[:, 1]  # Always take the first column for geometry
-        end
-        """
-        
-        
-        # println("dNdξ = ", dNdξ)
-        # println("x_nodes = ", x_nodes)
-
-        """ n_nodes = length(node_ids)
-        dNdξ = zeros(n_nodes, 3)
-        for i in 1:n_nodes
-            # This gives you the 3-vector gradient for node i
-            dNdξ[i, :] = shape_gradient(cellvalues, q_point, i)[:, 1]
-        end
-        
-
-        """
-
-        # dNdξ = Ferrite.getpoints(qr)
-        # dNdξ = hcat(dNdξ...)' 
-
-        # println("dNdξ = ", dNdξ)
-
+  
 
         detJ = det(J_Xξ)
         F = J_xξ * inv(J_Xξ)
         # println("F = ", F)
-
-            # DEBUG: Print info if F is "bad"
-        # if any(abs.(F) .> 2.0)  # or use your own threshold
-        #     println("==== BAD F DETECTED ====")
-        #     println("cell id: ", cellid(cell))
-        #     println("q_point: ", q_point)
-        #     println("node_ids: ", node_ids)
-        #     println("X_nodes_mat (reference):\n", X_nodes_mat)
-        #     println("x_nodes (current):\n", x_nodes)
-        #     println("dNdξ:\n", dNdξ)
-        #     println("J_xξ:\n", J_xξ)
-        #     println("J_Xξ:\n", J_Xξ)
-        #     println("detJ: ", detJ)
-        #     println("F:\n", F)
-        #     println("=======================")
-        # end
-
 
         # Call UMAT-based stress/tangent state[q_point]
         σ, D, state[q_point] = compute_stress_tangent(ϵ, dϵ, state_old[q_point], PROPS, nprops, t, F)
@@ -293,10 +148,6 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
             error("NaN or Inf detected in deformation gradient F")
         end 
 
-        # dΩ = getdetJdV(cellvalues, q_point)
-        # w_q = Ferrite.getweights(cellvalues.qr)[q_point]
-        # println("q_point = ", q_point, ", detJ = ", detJ, ", w_q = ", w_q, ", dΩ = ", dΩ)
-
         w_q = Ferrite.getweights(cellvalues.qr)[q_point]
         dΩ = detJ * w_q
         # println("q_point = ", q_point, ", detJ = ", detJ, ", w_q = ", w_q, ", dΩ = ", dΩ)
@@ -304,9 +155,6 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
         for i in 1:n_basefuncs
             δϵ_ = shape_symmetric_gradient(cellvalues, q_point, i)
             δϵ = tensor_to_voigt6(δϵ_)
-            #println("δϵ = ", δϵ)
-            #println("σ = ", σ)
-            #println("D = ", D)
             re[i] += dot(δϵ, σ) * dΩ
             #println("re[$i] = ", re[i])
             for j in 1:i
@@ -318,10 +166,7 @@ function assemble_cell!(Ke, re, cell, cellvalues, PROPS, nprops, ue, state, stat
         end
 
     end
-    #println("Ke = ", Ke)
-    #println("re = ", re)
-    #println("σ = ", σ)
-    #println("D = ", D)
+
     symmetrize_lower!(Ke)
 end
 
@@ -380,20 +225,3 @@ function doassemble!(K::SparseMatrixCSC, r::Vector, cellvalues::CellValues, dh::
     return K, r
 end
 
-"""
-function debug_compare_models(PROPS)
-    ϵ = [0.01, 0.0, 0.0, 0.0, 0.0, 0.0]
-    dϵ = [0.01, 0.0, 0.0, 0.0, 0.0, 0.0]
-    statev = zeros(108)
-    F = Matrix{Float64}(I, 3, 3)
-    F[1,1] = 1.01
-    t = 1
-    nprops = length(PROPS)
-
-    σ_umat, D_umat, statev_new = compute_stress_tangent(ϵ, dϵ, statev, PROPS, nprops, t, F)
-    println("UMAT stress: ", σ_umat)
-    println("UMAT tangent: ", D_umat)
-    println("UMAT statev (first 10): ", statev_new[1:10])
-end
-
-"""

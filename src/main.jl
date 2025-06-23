@@ -1,7 +1,5 @@
 include("./PREPROCESSING/Vevp_PreProcessing.jl")
 include("./POSTPROCESSING/Vevp_PostProcess.jl")
-using Plots
-using .POSTPROCESSING.Vevp_PostProcess
 
 # Wrapper function to call the Fortran UMAT subroutine
 function call_umat(stress, statev, ddsdde, sse, spd, scd, rpl, ddsddt, drplde, drpldt,
@@ -31,53 +29,53 @@ end
 function solve()
     # Define material properties in PROPS array
 
-        PROPS = [
-        2,                        # 1: Power Series Strain Approximation (dimensionless)
-        1470.588416,            # 2: Bulk Modulus [Pa]
-        563.9098439,            # 3: Shear Modulus [Pa]
-        5.900948586,              # 4: Yield Exponent (dimensionless)
-        0.33,                     # 5: Plastic Poisson Ratio (dimensionless)
-        0.001,                    # 6: Viscoplastic Coefficient (dimensionless)
-        10,                       # 7: Viscoplastic Exponent (dimensionless)
-        2.086229688,            # 8: Initial Yield Limit - Compression [Pa]
-        2164.115496,            # 9: Isotropic Hardening Parameter - Compression [Pa]
-        4.450073598,            # 10: Isotropic Hardening Parameter - Compression [Pa]
-        5401.554318,            # 11: Isotropic Hardening Parameter - Compression [Pa]
-        1.66898375,             # 12: Initial Yield Limit - Tension [Pa]
-        1731.292397,            # 13: Isotropic Hardening Parameter – Tension [Pa]
-        3.560058879,            # 14: Isotropic Hardening Parameter – Tension [Pa]
-        5401.554318,            # 15: Isotropic Hardening Parameter – Tension [Pa]
-        0,                        # 16: Kinematic Hardening Parameter (dimensionless)
-        0,                        # 17: Kinematic Hardening Parameter (dimensionless)
-        0,                        # 18: Kinematic Hardening Parameter (dimensionless)
-        298.5381412,            # 19: Bulk Modulus – Maxwell branch 1 [Pa]
-        128.572959,             # 20: Bulk Modulus – Maxwell branch 2 [Pa]
-        126.0116202,            # 21: Bulk Modulus – Maxwell branch 3 [Pa]
-        56.16237131,            # 22: Bulk Modulus – Maxwell branch 4 [Pa]
-        73.29632907,            # 23: Bulk Modulus – Maxwell branch 5 [Pa]
-        34.58797299,            # 24: Bulk Modulus – Maxwell branch 6 [Pa]
-        25.90272535,            # 25: Bulk Modulus – Maxwell branch 7 [Pa]
-        117.6700904,            # 26: Bulk Modulus – Maxwell branch 8 [Pa]
-        1000.0,                   # 27: Volumetric Relaxation Time – Maxwell Branch 1 [s]
-        100.0,                    # 28: Volumetric Relaxation Time – Maxwell Branch 2 [s]
-        10.0,                     # 29: Volumetric Relaxation Time – Maxwell Branch 3 [s]
-        1.0,                      # 30: Volumetric Relaxation Time – Maxwell Branch 4 [s]
+    PROPS = [
+        5,                        # 1: Power Series Strain Approximation
+        1.470588416e9,            # 2: Bulk Modulus [Pa]
+        5.639098439e8,            # 3: Shear Modulus [Pa]
+        5.900948586,              # 4: Yield Exponent
+        0.33,                     # 5: Plastic Poisson Ratio
+        0.001,                    # 6: Viscoplastic Coefficient
+        10,                       # 7: Viscoplastic Exponent
+        2.086229688e6,            # 8: Initial Yield Limit - Compression [Pa]
+        2.164115496e9,            # 9: Isotropic Hardening Parameter - Compression [Pa]
+        4.450073598e6,            # 10: Isotropic Hardening Parameter - Compression [Pa]
+        5.401554318e6,            # 11: Isotropic Hardening Parameter - Compression [Pa]
+        1.66898375e6,             # 12: Initial Yield Limit - Tension [Pa]
+        1.731292397e9,            # 13: Isotropic Hardening Parameter – Tension [Pa]
+        3.560058879e6,            # 14: Isotropic Hardening Parameter – Tension [Pa]
+        5.401554318e6,            # 15: Isotropic Hardening Parameter – Tension [Pa]
+        0,                        # 16: Kinematic Hardening Parameter
+        0,                        # 17: Kinematic Hardening Parameter
+        0,                        # 18: Kinematic Hardening Parameter
+        2.985381412e8,            # 19: Bulk Modulus – Maxwell branch 1 [Pa]
+        1.28572959e8,             # 20: Bulk Modulus – Maxwell branch 2 [Pa]
+        1.260116202e8,            # 21: Bulk Modulus – Maxwell branch 3 [Pa]
+        5.616237131e7,            # 22: Bulk Modulus – Maxwell branch 4 [Pa]
+        7.329632907e7,            # 23: Bulk Modulus – Maxwell branch 5 [Pa]
+        3.458797299e7,            # 24: Bulk Modulus – Maxwell branch 6 [Pa]
+        2.590272535e7,            # 25: Bulk Modulus – Maxwell branch 7 [Pa]
+        1.176700904e8,            # 26: Bulk Modulus – Maxwell branch 8 [Pa]
+        1000,                     # 27: Volumetric Relaxation Time – Maxwell Branch 1 [s]
+        100,                      # 28: Volumetric Relaxation Time – Maxwell Branch 2 [s]
+        10,                       # 29: Volumetric Relaxation Time – Maxwell Branch 3 [s]
+        1,                        # 30: Volumetric Relaxation Time – Maxwell Branch 4 [s]
         0.1,                      # 31: Volumetric Relaxation Time – Maxwell Branch 5 [s]
         0.01,                     # 32: Volumetric Relaxation Time – Maxwell Branch 6 [s]
         0.001,                    # 33: Volumetric Relaxation Time – Maxwell Branch 7 [s]
         0.0001,                   # 34: Volumetric Relaxation Time – Maxwell Branch 8 [s]
-        114.4770316,            # 35: Shear Modulus – Maxwell branch 1 [Pa]
-        49.30241285,            # 36: Shear Modulus – Maxwell branch 2 [Pa]
-        48.32024532,            # 37: Shear Modulus – Maxwell branch 3 [Pa]
-        21.53594689,            # 38: Shear Modulus – Maxwell branch 4 [Pa]
-        28.10611115,            # 39: Shear Modulus – Maxwell branch 5 [Pa]
-        13.26305731,            # 40: Shear Modulus – Maxwell branch 6 [Pa]
-        9.932624005,            # 41: Shear Modulus – Maxwell branch 7 [Pa]
-        45.1216136,             # 42: Shear Modulus – Maxwell branch 8 [Pa]
-        1000.0,                   # 43: Deviatoric Relaxation Time – Maxwell Branch 1 [s]
-        100.0,                    # 44: Deviatoric Relaxation Time – Maxwell Branch 2 [s]
-        10.0,                     # 45: Deviatoric Relaxation Time – Maxwell Branch 3 [s]
-        1.0,                      # 46: Deviatoric Relaxation Time – Maxwell Branch 4 [s]
+        1.144770316e8,            # 35: Shear Modulus – Maxwell branch 1 [Pa]
+        4.930241285e7,            # 36: Shear Modulus – Maxwell branch 2 [Pa]
+        4.832024532e7,            # 37: Shear Modulus – Maxwell branch 3 [Pa]
+        2.153594689e7,            # 38: Shear Modulus – Maxwell branch 4 [Pa]
+        2.810611115e7,            # 39: Shear Modulus – Maxwell branch 5 [Pa]
+        1.326305731e7,            # 40: Shear Modulus – Maxwell branch 6 [Pa]
+        9.932624005e6,            # 41: Shear Modulus – Maxwell branch 7 [Pa]
+        4.51216136e7,             # 42: Shear Modulus – Maxwell branch 8 [Pa]
+        1000,                     # 43: Deviatoric Relaxation Time – Maxwell Branch 1 [s]
+        100,                      # 44: Deviatoric Relaxation Time – Maxwell Branch 2 [s]
+        10,                       # 45: Deviatoric Relaxation Time – Maxwell Branch 3 [s]
+        1,                        # 46: Deviatoric Relaxation Time – Maxwell Branch 4 [s]
         0.1,                      # 47: Deviatoric Relaxation Time – Maxwell Branch 5 [s]
         0.01,                     # 48: Deviatoric Relaxation Time – Maxwell Branch 6 [s]
         0.001,                    # 49: Deviatoric Relaxation Time – Maxwell Branch 7 [s]
@@ -127,7 +125,7 @@ function solve()
     # Newton-Raphson loop
     n_timesteps = 10
     u_max = zeros(n_timesteps)
-    traction_magnitude = 1.e-3 * range(0.1, 1.0, length=n_timesteps)
+    traction_magnitude = 1.e7 * range(0.1, 1.0, length=n_timesteps)
     NEWTON_TOL = 1e-6
 
 
@@ -186,26 +184,20 @@ function solve()
         u_max[timestep] = maximum(abs, u)
     end
     
-    # After solve loop
-    mises = extract_vonmises(states)
-    sigma11 = extract_sigma11(states)
-    disp_mag = extract_disp_mag(u, grid)
     
-    # Optionally plot or print
-
-    plot(mises, title="Von Mises Stress per Element")
-    plot(sigma11, title="Sigma_11 per Element")
-    scatter(disp_mag, title="Displacement Magnitude at Nodes")
+    # Plot global histories
     plot_true_strain_vs_time(strain_history, time)
     plot_stress_vs_strain(stress_history, strain_history)
     plot_traction_vs_displacement(u_max, traction_magnitude)
     
-    # Or call postprocess as before for VTK and all plots
-    postprocess(grid, dh, states, PROPS, u)
-
-    # Postprocessing
-    # postprocess(grid, dh, states, PROPS, u)
-    # plot_traction_displacement(u_max, traction_magnitude)
+    # Optionally, plot spatial fields for the last step
+    mises = extract_vonmises(states)
+    sigma11 = extract_sigma11(states)
+    disp_mag = extract_disp_mag(u, grid)
+    
+    plot(mises, title="Von Mises Stress per Element", xlabel="Element", ylabel="Von Mises [Pa]", legend=false)
+    plot(sigma11, title="Sigma_11 per Element", xlabel="Element", ylabel="Sigma_11 [Pa]", legend=false)
+    scatter(disp_mag, title="Displacement Magnitude at Nodes", xlabel="Node", ylabel="|u| [m]", legend=false)
 
 end
 
