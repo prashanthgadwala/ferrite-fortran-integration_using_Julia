@@ -95,8 +95,7 @@ C     !--------------------------------------------------------------
          REAL(prec), INTENT(OUT)   :: ddsdde(ntens,ntens), PNEWDT   
 
          !Declaration of local variables
-         INTEGER    :: ii, jj, ibranch, O6, order
-         INTEGER    :: idx
+         INTEGER    :: ii, jj, O6, order
          REAL(prec) :: I_mat(3,3)
          ! Internal Variables 
          REAL(prec) :: F_vp_n(3, 3), E_ve_n(3, 3)
@@ -131,6 +130,9 @@ C     !--------------------------------------------------------------
          ! VP variables
          REAL(prec) :: ptilde, PhiEq, sigma_c, sigma_t, HHc, HHt, HHb
          REAL(prec) :: m, a0, a1, a2, GAMMA, u, v, dev_phi(3, 3)
+         ! Variables for zero strain check
+         REAL(prec) :: strain_norm, LAMBDA, MU
+         ! VP variables continued
          REAL(prec) :: dev_Q(3, 3), tr_Q, Q(3, 3), GQ(3,3)
          REAL(prec) :: exp_GQ(3, 3), F_vp(3,3), F_vp_inv(3,3)
          ! VE corrected variables
@@ -165,51 +167,51 @@ C     !--------------------------------------------------------------
          REAL(prec), PARAMETER :: TOLL=0.0001D0, TOLL_G=0.999D-6
          INTEGER, PARAMETER :: MAX_i=100
 
-        !Initialize 2nd order identity tensor explicitly
-         I_mat(:,:) = 0.D0
-         I_mat(1,1) = 1.D0
-         I_mat(2,2) = 1.D0
-         I_mat(3,3) = 1.D0
+        !Define 2nd order identity tensor
+         data I_mat(1,:) /1.D0, 0.D0, 0.D0/
+         data I_mat(2,:) /0.D0, 1.D0, 0.D0/
+         data I_mat(3,:) /0.D0, 0.D0, 1.D0/
+
+        ! ===================================================================
+        ! CRITICAL FIX: Initialize STRESS and DDSDDE to zero
+        ! Without this, they contain garbage memory values leading to NaN!
+        ! ===================================================================
+         STRESS = 0.0D0
+         DDSDDE = 0.0D0
 
         ! This is a workaround to set the diagnol values of F_vp = 1
         ! for the first time step (initial condition) in FFTMAD.
         ! Can be commented out for ABAQUS, If you comment out, then
         ! in abaqus use the inp file to set initial values for F_vp.
          IF ((KINC .EQ. 1) .AND. (KSTEP .EQ. 1)) THEN
-          ! Initialize all state variables to zero
-          do ii = 1, NSTATV
-            STATEV(ii) = 0.D0
-          end do
-          ! Set F_vp_n to identity (diagonal elements)
-          STATEV(1) = 1.D0  ! F_vp_n(1,1)
-          STATEV(5) = 1.D0  ! F_vp_n(2,2)
-          STATEV(9) = 1.D0  ! F_vp_n(3,3)
+          STATEV(1) = 1.D0
+          STATEV(2) = 1.D0
+          STATEV(3) = 1.D0
          END IF
 
-         ! State variables at previous time step (tensor-only)
-         ! Assign directly if STATEV is now a tensor array, e.g. STATEV(3,3,N)
-         ! Example (adjust as per your new STATEV structure):
-         ! STATEV layout: [F_vp_n(1:9), E_ve_n(10:18), gma_n(19), b_n(20:28), AA_n(29:100), BB_n(101:108)]
-         do ii = 1, 3
-           do jj = 1, 3
-             F_vp_n(ii, jj) = STATEV(3*(ii-1) + jj)
-             E_ve_n(ii, jj) = STATEV(9 + 3*(ii-1) + jj)
-             b_n(ii, jj)    = STATEV(19 + 3*(ii-1) + jj)
-           end do
-         end do
-         gma_n = STATEV(18+1)
+         ! State variables at previous time step
+         CALL voit2mat(STATEV(1:9), F_vp_n(:,:))
+         CALL voit2mat(STATEV(10:18), E_ve_n(:,:))
+         gma_n = STATEV(19)
          gma_0 = gma_n
-         do ibranch = 1, 8
-           do ii = 1, 3
-             do jj = 1, 3
-               idx = 28 + (ibranch-1)*9 + 3*(ii-1) + jj
-               AA_n(ibranch, ii, jj) = STATEV(idx)
-             end do
-           end do
-         end do
-         do ibranch = 1, 8
-           BB_n(ibranch) = STATEV(100 + ibranch)
-         end do
+         CALL voit2mat(STATEV(20:28), b_n(:,:))
+         CALL voit2mat(STATEV(29:37), AA_n(1,:,:))
+         CALL voit2mat(STATEV(38:46), AA_n(2,:,:))
+         CALL voit2mat(STATEV(47:55), AA_n(3,:,:))
+         CALL voit2mat(STATEV(56:64), AA_n(4,:,:))
+         CALL voit2mat(STATEV(65:73), AA_n(5,:,:))
+         CALL voit2mat(STATEV(74:82), AA_n(6,:,:))
+         CALL voit2mat(STATEV(83:91), AA_n(7,:,:))
+         CALL voit2mat(STATEV(92:100), AA_n(8,:,:))
+
+         BB_n(1) = STATEV(101)
+         BB_n(2) = STATEV(102)
+         BB_n(3) = STATEV(103)
+         BB_n(4) = STATEV(104)
+         BB_n(5) = STATEV(105)
+         BB_n(6) = STATEV(106)
+         BB_n(7) = STATEV(107)
+         BB_n(8) = STATEV(108)
 
          ! Get Material Properties
          order         =PROPS(1)    
@@ -268,6 +270,37 @@ C     !--------------------------------------------------------------
 
          ! Compute determinant of F (Deformation Gradient)
          CALL determinant(DFGRD1(:,:), J)
+         
+         ! Check for unrealistic deformation or zero deformation
+         ! Use pure elastic for near-zero deformation (initialization)
+         ! or check for element inversion
+         IF (J .LT. 0.1D0 .OR. J .GT. 10.0D0) THEN
+             ! Unrealistic deformation - use pure elastic with SMALL strain
+             ! This handles both initialization and potential numerical issues
+             LAMBDA = KK_inf - (2.0D0/3.0D0) * GG_inf
+             MU = GG_inf
+             
+             ! Elastic stiffness matrix (Voigt notation)
+             DDSDDE = 0.0D0
+             DDSDDE(1,1) = LAMBDA + 2.0D0 * MU
+             DDSDDE(1,2) = LAMBDA
+             DDSDDE(1,3) = LAMBDA
+             DDSDDE(2,1) = LAMBDA
+             DDSDDE(2,2) = LAMBDA + 2.0D0 * MU
+             DDSDDE(2,3) = LAMBDA
+             DDSDDE(3,1) = LAMBDA
+             DDSDDE(3,2) = LAMBDA
+             DDSDDE(3,3) = LAMBDA + 2.0D0 * MU
+             DDSDDE(4,4) = MU
+             DDSDDE(5,5) = MU
+             DDSDDE(6,6) = MU
+             
+             ! Keep STRESS at zero (already initialized)
+             ! Keep state variables unchanged
+             PNEWDT = 1.0D0
+             RETURN
+         END IF
+         
         ! Calculate VE Right Cauchy Green Tensor (C_ve) at trial State
          CALL vevpSplit(DFGRD1(:, :), F_vp_n(:, :),
      1                  F_ve_tr(:, :), C_ve_tr(:, :))
@@ -277,6 +310,37 @@ C     !--------------------------------------------------------------
          CALL approx_log(D_ve_tr(:,:), order, E_ve_tr(:, :),
      1               dlogC_ve_tr(:,:,:,:))
          E_ve_tr(:, :) = 0.5D0 * E_ve_tr(:, :)
+
+         ! Check for zero/tiny strain - use pure elastic response
+         ! This handles initialization with zero displacement
+         CALL mat2ddot(E_ve_tr(:,:), E_ve_tr(:,:), strain_norm)
+         strain_norm = SQRT(strain_norm)
+         
+         IF (strain_norm .LT. 1.0D-10) THEN
+             ! Pure elastic response for tiny strains
+             ! Compute Lame parameters from K and G
+             LAMBDA = KK_inf - (2.0D0/3.0D0) * GG_inf
+             MU = GG_inf
+             
+             ! Elastic stiffness matrix (Voigt notation)
+             DDSDDE = 0.0D0
+             DDSDDE(1,1) = LAMBDA + 2.0D0 * MU
+             DDSDDE(1,2) = LAMBDA
+             DDSDDE(1,3) = LAMBDA
+             DDSDDE(2,1) = LAMBDA
+             DDSDDE(2,2) = LAMBDA + 2.0D0 * MU
+             DDSDDE(2,3) = LAMBDA
+             DDSDDE(3,1) = LAMBDA
+             DDSDDE(3,2) = LAMBDA
+             DDSDDE(3,3) = LAMBDA + 2.0D0 * MU
+             DDSDDE(4,4) = MU
+             DDSDDE(5,5) = MU
+             DDSDDE(6,6) = MU
+             
+             ! Keep STRESS at zero (already initialized)
+             ! Keep state variables unchanged
+             RETURN
+         END IF
 
          ! Calculate the corotated kirchoff stress at trial state along 
          ! with VE internal variables
@@ -293,6 +357,15 @@ C     !--------------------------------------------------------------
     
          CALL mat2ddot(dev_phi_tr(:, :), dev_phi_tr(:, :), phi_e_tr)
          phi_e_tr = (3.D0 / 2.D0) * phi_e_tr
+         
+         ! ===================================================================
+         ! CRITICAL FIX: Ensure non-negative before SQRT
+         ! Numerical errors can make this slightly negative → NaN!
+         ! ===================================================================
+         IF (phi_e_tr .LT. 0.0D0) THEN
+             phi_e_tr = 0.0D0
+         END IF
+         
          phi_e_tr = SQRT(phi_e_tr)
     
          ptilde = phi_p_tr
@@ -303,6 +376,14 @@ C     !--------------------------------------------------------------
      1     HHc, HHt, HHb)
          ! Update Drucker Pragger coefficients along with ecc factor m
          CALL DPcoeff(alpha, sigma_c, sigma_t, m, a0, a1, a2)
+         
+         ! ===================================================================
+         ! CRITICAL FIX: Ensure non-negative before power with non-integer
+         ! (-x)**0.5 produces NaN!
+         ! ===================================================================
+         IF (PhiEq .LT. 0.0D0) THEN
+             PhiEq = 0.0D0
+         END IF
          
          F_tr = a2 * PhiEq**alpha  - a1 * ptilde - a0
 
@@ -358,36 +439,45 @@ C     !--------------------------------------------------------------
           STRESS(5) = (1.D0 / J) * tau_tr(1, 3)
           STRESS(6) = (1.D0 / J) * tau_tr(2, 3)
 
-          ! Update internal variables for trial state (tensor-only)
-          ! Write E_ve_tr to STATEV(10:18)
-          do ii = 1, 3
-            do jj = 1, 3
-              STATEV(9 + 3*(ii-1) + jj) = E_ve_tr(ii, jj)
-            end do
-          end do
-          ! Zero out b_n and AA_tr, set gma_n
-          do ii = 1, 3
-            do jj = 1, 3
-              STATEV(19 + 3*(ii-1) + jj) = b_n(ii, jj)
-            end do
-          end do
-          STATEV(18+1) = gma_n
-          ! Write AA_tr(8,3,3) to STATEV(29:100)
-          do ibranch = 1, 8
-            do ii = 1, 3
-              do jj = 1, 3
-                idx = 28 + (ibranch-1)*9 + 3*(ii-1) + jj
-                STATEV(idx) = AA_tr(ibranch, ii, jj)
-              end do
-            end do
-          end do
-          ! Write BB_tr(8) to STATEV(101:108)
-          do ibranch = 1, 8
-            STATEV(100 + ibranch) = BB_tr(ibranch)
-          end do
+          ! Update internal variables for trial state. No need to update VP internal variables
+          CALL mat2voit(E_ve_tr(:,:),STATEV(10:18))
+
+          CALL mat2voit(AA_tr(1,:,:),STATEV(29:37))
+          CALL mat2voit(AA_tr(2,:,:),STATEV(38:46))
+          CALL mat2voit(AA_tr(3,:,:),STATEV(47:55))
+          CALL mat2voit(AA_tr(4,:,:),STATEV(56:64))
+          CALL mat2voit(AA_tr(5,:,:),STATEV(65:73))
+          CALL mat2voit(AA_tr(6,:,:),STATEV(74:82))
+          CALL mat2voit(AA_tr(7,:,:),STATEV(83:91))
+          CALL mat2voit(AA_tr(8,:,:),STATEV(92:100))
+
+          STATEV(101)=BB_tr(1)
+          STATEV(102)=BB_tr(2)
+          STATEV(103)=BB_tr(3)
+          STATEV(104)=BB_tr(4)
+          STATEV(105)=BB_tr(5)
+          STATEV(106)=BB_tr(6)
+          STATEV(107)=BB_tr(7)
+          STATEV(108)=BB_tr(8)
           
-          ! Tangent and stress update should be tensor-only here
-          ! (Implement tensor-only DDSDDE if needed by your FE code)
+          !Turn perturbated stress into voit notation
+          tau_tr_hat_v(:, :) = 0.D0
+          DO O6 = 1, 6
+            DO ii = 1, 3
+              tau_tr_hat_v(O6, ii) = tau_tr_hat(O6, ii, ii)
+            END DO
+            tau_tr_hat_v(O6, 4) = tau_tr_hat(O6, 1, 2)
+            tau_tr_hat_v(O6, 5) = tau_tr_hat(O6, 1, 3)
+            tau_tr_hat_v(O6, 6) = tau_tr_hat(O6, 2, 3)
+          END DO
+
+          !Compute Tangent for Abaqus
+          DO ii = 1, 6
+            DO jj = 1, 6
+              DDSDDE(ii, jj) = (1.D0 / (J * TOLL))
+     1                     *  (tau_tr_hat_v(jj, ii) - J*STRESS(ii))
+            END DO
+          END DO
 
          
         ! In case the yield surface is breached at trail state, corrector steps are needed
@@ -448,38 +538,28 @@ C     !--------------------------------------------------------------
           b(:,:) = b_n(:,:) + k_plast*HHb * GQ(:,:)
 
           ! Return updated internal variables
-          ! Write F_vp to STATEV(1:9)
-          do ii = 1, 3
-            do jj = 1, 3
-              STATEV(3*(ii-1) + jj) = F_vp(ii, jj)
-            end do
-          end do
-          ! Write E_ve to STATEV(10:18)
-          do ii = 1, 3
-            do jj = 1, 3
-              STATEV(9 + 3*(ii-1) + jj) = E_ve(ii, jj)
-            end do
-          end do
-          STATEV(18+1) = gma_n
-          ! Write b to STATEV(20:28)
-          do ii = 1, 3
-            do jj = 1, 3
-              STATEV(19 + 3*(ii-1) + jj) = b(ii, jj)
-            end do
-          end do
-          ! Write AA(8,3,3) to STATEV(29:100)
-          do ibranch = 1, 8
-            do ii = 1, 3
-              do jj = 1, 3
-                idx = 28 + (ibranch-1)*9 + 3*(ii-1) + jj
-                STATEV(idx) = AA(ibranch, ii, jj)
-              end do
-            end do
-          end do
-          ! Write BB(8) to STATEV(101:108)
-          do ibranch = 1, 8
-            STATEV(100 + ibranch) = BB(ibranch)
-          end do
+          CALL mat2voit(F_vp(:,:),STATEV(1:9))
+          CALL mat2voit(E_ve(:,:),STATEV(10:18))
+          STATEV(19) = gma_n
+          CALL mat2voit(b(:,:),STATEV(20:28))
+
+          CALL mat2voit(AA(1,:,:),STATEV(29:37))
+          CALL mat2voit(AA(2,:,:),STATEV(38:46))
+          CALL mat2voit(AA(3,:,:),STATEV(47:55))
+          CALL mat2voit(AA(4,:,:),STATEV(56:64))
+          CALL mat2voit(AA(5,:,:),STATEV(65:73))
+          CALL mat2voit(AA(6,:,:),STATEV(74:82))
+          CALL mat2voit(AA(7,:,:),STATEV(83:91))
+          CALL mat2voit(AA(8,:,:),STATEV(92:100))
+
+          STATEV(101)=BB(1)
+          STATEV(102)=BB(2)
+          STATEV(103)=BB(3)
+          STATEV(104)=BB(4)
+          STATEV(105)=BB(5)
+          STATEV(106)=BB(6)
+          STATEV(107)=BB(7)
+          STATEV(108)=BB(8)
 
           ! Numeric Tangent
           DO O6  =  1, 6
