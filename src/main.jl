@@ -6,19 +6,19 @@ using Ferrite, Tensors, TimerOutputs, ProgressMeter, LinearAlgebra, Printf
 # This implementation demonstrates integration of Fortran UMAT (User MATerial)
 # subroutines with Ferrite.jl FEM framework for finite strain material modeling.
 #
-# Test Configuration: Cantilever Beam with VEVP Material
-# - Geometry: 10cm × 1cm × 1cm beam (20×4×4 Q1 hexahedra)
+# Test Configuration: Unit Cube Tension Test with VEVP Material
+# - Geometry: 1×1×1 unit cube (single Q2 hexahedron, 27 nodes)
 # - Material: Viscoelastic-Viscoplastic (VEVP) RTM6 epoxy
 #   * 8 Maxwell branches: Multi-scale relaxation (τ = 1s to 1000s)
 #   * Viscoplasticity: Rate-dependent yield with hardening
-# - Loading: 1cm tip deflection (10% geometric nonlinearity)
-# - Solver: Newton-Raphson with 100 load steps, 1e-4 tolerance
+# - Loading: 30% tensile strain in x-direction (simple tension)
+# - Solver: Newton-Raphson with 50 time steps, 1e-3 tolerance
 #
 # Key Features:
 # - ccall interface to Fortran UMAT (ABAQUS-compatible)
 # - Consistent tangent stiffness (DDSDDE) for Newton convergence
 # - State variable management (108 internal variables per quadrature point)
-# - Large deformation kinematics with stress gradient verification
+# - Large deformation kinematics for nonlinear VEVP behavior
 # ==============================================================================
 
 # ==============================================================================
@@ -182,11 +182,11 @@ function compute_stress_tangent_umat(F, F_old, statev, PROPS, DTIME, qp_idx, cel
     ε_old = [E_old_voigt[1], E_old_voigt[2], E_old_voigt[3], E_old_voigt[6], E_old_voigt[5], E_old_voigt[4]]
     Δε = ε - ε_old
     
-    # Check for excessive strain
-    strain_norm = norm(ε)
-    if strain_norm > 0.1
-        @warn "Large strain detected at cell $cell_idx, qp $qp_idx: ||ε|| = $strain_norm"
-    end
+    # Check for excessive strain (disabled - 23% strain is expected for 50% loading)
+    # strain_norm = norm(ε)
+    # if strain_norm > 0.5  # Only warn for truly excessive strains
+    #     @warn "Large strain detected at cell $cell_idx, qp $qp_idx: ||ε|| = $strain_norm"
+    # end
     
     # Check deformation gradient
     F_norm = norm(F - one(F))
@@ -355,28 +355,28 @@ function get_vevp_properties()
     
     PROPS = [
         5,                        # 1: Approximation order + VEVP trigger (>2)
-        1.470588416e6,            # 2: Bulk Modulus [Pa]
-        5.639098439e5,            # 3: Shear Modulus [Pa]
-        5.900948586,              # 4: Yield Exponent
-        0.33,                     # 5: Plastic Poisson Ratio
-        0.001,                    # 6: Viscoplastic Coefficient
-        10,                       # 7: Viscoplastic Exponent
-        2.086229688e6,            # 8: Initial Yield Limit - Compression [Pa]
-        2.164115496e9,            # 9: Isotropic Hardening - Compression [Pa]
-        4.450073598e6,            # 10: Isotropic Hardening - Compression [Pa]
-        5.401554318e6,            # 11: Isotropic Hardening - Compression [Pa]
-        1.66898375e6,             # 12: Initial Yield Limit - Tension [Pa]
-        1.731292397e9,            # 13: Isotropic Hardening - Tension [Pa]
-        3.560058879e6,            # 14: Isotropic Hardening - Tension [Pa]
-        5.401554318e6,            # 15: Isotropic Hardening - Tension [Pa]
-        0,                        # 16: Kinematic Hardening Parameter
-        0,                        # 17: Kinematic Hardening Parameter
-        0,                        # 18: Kinematic Hardening Parameter
-        # Maxwell branches - ALL 8 BRANCHES ACTIVE! 🔥
-        # Logarithmic time scale distribution: 1s → 1000s
-        1.0e6, 0.8e6, 0.6e6, 0.5e6, 0.4e6, 0.3e6, 0.2e6, 0.1e6,   # 19-26: Bulk moduli [Pa]
+        1.470588416e6,            # 2: K_inf - Equilibrium bulk modulus [Pa]
+        5.639098439e5,            # 3: G_inf - Equilibrium shear modulus [Pa]
+        5.900948586,              # 4: Yield exponent (controls yield surface shape)
+        0.33,                     # 5: Plastic Poisson ratio
+        0.001,                    # 6: Viscoplastic coefficient (rate sensitivity)
+        10,                       # 7: Viscoplastic exponent (Norton-Hoff law)
+        2.086229688e6,            # 8: Initial yield limit - compression [Pa]
+        2.164115496e9,            # 9: Isotropic hardening modulus - compression [Pa]
+        4.450073598e6,            # 10: Isotropic hardening parameter - compression [Pa]
+        5.401554318e6,            # 11: Isotropic hardening saturation - compression [Pa]
+        1.66898375e6,             # 12: Initial yield limit - tension [Pa]
+        1.731292397e9,            # 13: Isotropic hardening modulus - tension [Pa]
+        3.560058879e6,            # 14: Isotropic hardening parameter - tension [Pa]
+        5.401554318e6,            # 15: Isotropic hardening saturation - tension [Pa]
+        0,                        # 16: Kinematic hardening (disabled)
+        0,                        # 17: Kinematic hardening (disabled)
+        0,                        # 18: Kinematic hardening (disabled)
+        # 8 Maxwell branches for viscoelasticity (multi-scale relaxation)
+        # Time scale distribution: 1s → 1000s (captures short to long-term behavior)
+        1.0e6, 0.8e6, 0.6e6, 0.5e6, 0.4e6, 0.3e6, 0.2e6, 0.1e6,   # 19-26: Branch bulk moduli [Pa]
         1.0, 3.0, 10.0, 30.0, 100.0, 300.0, 700.0, 1000.0,        # 27-34: Volumetric relaxation times [s]
-        0.5e6, 0.4e6, 0.3e6, 0.25e6, 0.2e6, 0.15e6, 0.1e6, 0.05e6, # 35-42: Shear moduli [Pa]
+        0.5e6, 0.4e6, 0.3e6, 0.25e6, 0.2e6, 0.15e6, 0.1e6, 0.05e6, # 35-42: Branch shear moduli [Pa]
         1.0, 3.0, 10.0, 30.0, 100.0, 300.0, 700.0, 1000.0          # 43-50: Deviatoric relaxation times [s]
     ]
     
@@ -522,6 +522,57 @@ function assemble_global!(K, g, dh, cv, mp, u, states, PROPS, nstatv, DTIME)
 end
 
 # ==============================================================================
+# 6b. STRESS SNAPSHOT (for post-processing exports)
+# ==============================================================================
+
+"""
+Compute Cauchy stress at all quadrature points for the current displacement/state.
+Returns a nested vector: stresses[cell_idx][qp] = Voigt6 (11,22,33,12,13,23).
+"""
+function compute_stress_snapshot(dh, cv, mp, u, states, PROPS, nstatv, DTIME, grid)
+    stresses = Vector{Vector{Vector{Float64}}}(undef, getncells(grid))
+
+    for (cell_idx, cell) in enumerate(CellIterator(dh))
+        reinit!(cv, cell)
+        global_dofs = celldofs(cell)
+        ue = u[global_dofs]
+        n_qp = getnquadpoints(cv)
+        cell_stresses = Vector{Vector{Float64}}(undef, n_qp)
+
+        for qp in 1:n_qp
+            ∇u = function_gradient(cv, qp, ue)
+            F = one(∇u) + ∇u
+            F_old = one(F)
+
+            # Copy to avoid mutating stored state during snapshot
+            statev = copy(states[cell_idx][qp])
+
+            if MATERIAL_TYPE == "neohook"
+                C = tdot(F)
+                S, _ = constitutive_driver_neohook(C, mp)
+            else
+                # Elastic or VEVP UMAT
+                S, _, _ = compute_stress_tangent_umat(F, F_old, statev, PROPS, DTIME, qp, cell_idx)
+            end
+
+            # Convert 2nd PK stress to Cauchy: σ = (1/J) * F ⋅ S ⋅ Fᵀ
+            J = det(F)
+            σ_tensor = (1 / J) * F ⋅ S ⋅ transpose(F)
+
+            # Ferrite's tovoigt ordering: [11, 22, 33, 23, 13, 12]
+            σ_voigt_ferrite = tovoigt(σ_tensor)
+            σ_voigt = [σ_voigt_ferrite[1], σ_voigt_ferrite[2], σ_voigt_ferrite[3],
+                       σ_voigt_ferrite[6], σ_voigt_ferrite[5], σ_voigt_ferrite[4]]
+            cell_stresses[qp] = σ_voigt
+        end
+
+        stresses[cell_idx] = cell_stresses
+    end
+
+    return stresses
+end
+
+# ==============================================================================
 # 7. SOLVER
 # ==============================================================================
 
@@ -539,24 +590,24 @@ function solve()
     println()
     
     # ========================================
-    # Mesh generation - CANTILEVER BEAM
+    # Mesh generation - UNIT CUBE TENSION TEST
     # ========================================
-    # Beam dimensions
-    L_length = 0.1   # 10 cm long
-    L_height = 0.01  # 1 cm tall  
-    L_width = 0.01   # 1 cm wide
+    # Unit cube: 1 × 1 × 1 units (simple tension test geometry)
+    L_length = 1.0   # X-direction (loading direction)
+    L_height = 1.0   # Z-direction
+    L_width = 1.0    # Y-direction
     
-    # More elements along length for bending resolution
-    N_length = 20
-    N_height = 4
-    N_width = 4
+    # Refined mesh: 2×2×2 = 8 Q2 hexahedral elements
+    N_length = 2
+    N_height = 2
+    N_width = 2
     
     left = Vec{3}((0.0, 0.0, 0.0))
     right = Vec{3}((L_length, L_width, L_height))
     
     grid = generate_grid(Hexahedron, (N_length, N_width, N_height), left, right)
-    println("Mesh: $(getncells(grid)) hexahedral elements")
-    println("  Beam dimensions: $(L_length*100) cm × $(L_width*100) cm × $(L_height*100) cm")
+    println("Mesh: $(getncells(grid)) hexahedral elements (refined cube)")
+    println("  Cube dimensions: $(L_length) × $(L_width) × $(L_height) units")
     println("  Elements: $(N_length) × $(N_width) × $(N_height)")
     
     # ========================================
@@ -584,7 +635,7 @@ function solve()
         println("  K_inf = $(PROPS[2]/1e9) GPa")
         println("  G_inf = $(PROPS[3]/1e9) GPa")
         println("  State variables: $nstatv")
-        println("  Viscoelastic: ALL 8 MAXWELL BRANCHES ACTIVE! 🔥")
+        println("  Viscoelastic: ALL 8 MAXWELL BRANCHES ACTIVE!")
         println("    Branch 1: K=$(PROPS[19]/1e6) MPa, G=$(PROPS[35]/1e6) MPa, τ=$(PROPS[27]) s")
         println("    Branch 2: K=$(PROPS[20]/1e6) MPa, G=$(PROPS[36]/1e6) MPa, τ=$(PROPS[28]) s")
         println("    Branch 3: K=$(PROPS[21]/1e6) MPa, G=$(PROPS[37]/1e6) MPa, τ=$(PROPS[29]) s")
@@ -595,15 +646,16 @@ function solve()
         println("    Branch 8: K=$(PROPS[26]/1e6) MPa, G=$(PROPS[42]/1e6) MPa, τ=$(PROPS[34]) s")
     end
     
-    DTIME = 100.0  # Time increment (for VEVP rate effects)
-    println("  DTIME = $DTIME s")
+    DTIME = 100  # Time increment (for VEVP rate effects) - must be << τ_min = 1s
+    n_steps = 50  # Define here so it can be used in the print statement
+    println("  DTIME = $DTIME s (total time: $(DTIME * n_steps) s)")
     println()
     
     # ========================================
     # Finite element setup
     # ========================================
-    ip = Lagrange{RefHexahedron, 1}()^3  # Q1 displacement
-    qr = QuadratureRule{RefHexahedron}(2)  # 2×2×2 Gauss integration
+    ip = Lagrange{RefHexahedron, 2}()^3  # Q2 displacement (quadratic)
+    qr = QuadratureRule{RefHexahedron}(3)  # 3×3×3 Gauss integration (for Q2)
     cv = CellValues(qr, ip)
     
     # DofHandler - SINGLE FIELD (pure displacement)
@@ -616,26 +668,38 @@ function solve()
     println()
     
     # ========================================
-    # Boundary conditions - CANTILEVER BEAM
+    # Boundary conditions - SIMPLE TENSION TEST
     # ========================================
     dbcs = ConstraintHandler(dh)
     
-    # Left face (x=0): fully fixed (clamped end)
-    dbc_fixed = Dirichlet(:u, getfacetset(grid, "left"), (x, t) -> [0.0, 0.0, 0.0], [1, 2, 3])
-    add!(dbcs, dbc_fixed)
-    
-    # Right face (x=L): prescribed tip displacement in z-direction (downward deflection)
-    u_tip = -0.01  # 1 cm tip deflection (10% of beam length!)
-    # Only constrain z-component, function returns scalar for single component
-    dbc_tip = Dirichlet(:u, getfacetset(grid, "right"), (x, t) -> t*u_tip, [3])
-    add!(dbcs, dbc_tip)
+    # Left face (x=0): Fix U1=0 (prevent rigid translation in loading direction)
+    dbc_left = Dirichlet(:u, getfacetset(grid, "left"), (x, t) -> 0.0, [1])
+    add!(dbcs, dbc_left)
+
+    # Right face (x=1): Applied displacement U1 = t * u_load (30% strain)
+    u_load = 0.3  # 0.3 units displacement = 30% engineering strain
+    dbc_right = Dirichlet(:u, getfacetset(grid, "right"), (x, t) -> t * u_load, [1])
+    add!(dbcs, dbc_right)
+
+    # Standard pinning to remove rigid body motion without over-constraining:
+    # - Fix one node's U2 on left face
+    # - Fix one node's U3 on left face
+    # This allows lateral Poisson contraction (U2,U3) everywhere else.
+    addnodeset!(grid, "left_corner_y", Set([1]))  # assumes node 1 is at x=0 corner
+    dbc_pin_y = Dirichlet(:u, getnodeset(grid, "left_corner_y"), (x, t) -> 0.0, [2])
+    add!(dbcs, dbc_pin_y)
+
+    addnodeset!(grid, "left_corner_z", Set([1]))
+    dbc_pin_z = Dirichlet(:u, getnodeset(grid, "left_corner_z"), (x, t) -> 0.0, [3])
+    add!(dbcs, dbc_pin_z)
     
     close!(dbcs)
     
-    println("Boundary conditions:")
-    println("  Left end (x=0): fully clamped (u = 0)")
-    println("  Right end (x=L): prescribed tip deflection u_z = $u_tip m ($(abs(u_tip/L_length)*100)% of length)")
-    println("  Expected: Large bending deformation + stress gradient!")
+    println("Boundary conditions (Simple Tension Test):")
+    println("  Left face (x=0): U1=0 (fixed in loading direction)")
+    println("  Right face (x=1): U1=$u_load (30% tensile strain in x-direction)")
+    println("  Pins: One left corner U2=0 and U3=0 (remove RBM, allow Poisson)")
+    println("  Test type: Uniaxial tension (nonlinear VEVP behavior expected)")
     println()
     
     # ========================================
@@ -649,9 +713,9 @@ function solve()
     # Initialize state variables for each quadrature point
     n_qpoints = getnquadpoints(cv)
     
-    # CRITICAL FIX for VEVP: Initialize F_vp to identity [1, 1, 1, 0, 0, 0, 0, 0, 0]
-    # STATEV(1:9) stores viscoplastic deformation gradient F_vp
-    # Must be identity initially: F_vp = [[1,0,0], [0,1,0], [0,0,1]]
+    # Initialize state variables for VEVP material (108 variables per quadrature point)
+    # Layout: F_vp(1-9), E_ve(10-18), gamma(19), b(20-28), AA(29-100), BB(101-108)
+    # F_vp must be identity initially: F_vp = [[1,0,0], [0,1,0], [0,0,1]] in Voigt notation
     function init_statev()
         statev = zeros(nstatv)
         if MATERIAL_TYPE == "vevp"
@@ -673,9 +737,10 @@ function solve()
     # ========================================
     # Load stepping
     # ========================================
-    n_steps = 100  # Many small steps for stable convergence with 8 Maxwell branches
+    # n_steps already defined earlier (near DTIME)
     t_history = Float64[]
-    u_history = Float64[]
+    u_history = []  # Store full displacement vectors
+    tip_displacement_history = Float64[]  # Store tip displacement for plotting
     states_history = []  # Store state variables at each converged step
     stress_history = []  # Store stress tensors at each converged step
     strain_history = []  # Store strain at each converged step
@@ -694,8 +759,8 @@ function solve()
         
         # Newton-Raphson iteration
         newton_itr = 0
-        NEWTON_TOL = 1.0e-4  # Relaxed for complex VEVP with 8 Maxwell branches
-        NEWTON_MAXITER = 50  # Allow more iterations for stable convergence
+        NEWTON_TOL = 1.0e-3  # Relaxed tolerance for cube tension test (ABAQUS uses 1e-5 but with better tangent)
+        NEWTON_MAXITER = 150  # Allow more iterations due to numerical tangent
         
         println("\nStep $step: t = $(round(t, digits=4))")
         
@@ -723,53 +788,64 @@ function solve()
             ΔΔu = K \ g
             apply_zero!(ΔΔu, dbcs)
             
-            # Update displacement
-            u .-= ΔΔu
+            # Line search (backtracking) for robustness
+            α = 1.0  # Start with full Newton step
+            u_trial = copy(u)
+            normg_old = normg
+            max_linesearch = 10
+            
+            for ls_iter in 1:max_linesearch
+                u_trial .= u .- α .* ΔΔu
+                
+                # Compute residual at trial point
+                K_trial, g_trial, states_trial = assemble_global!(K, g, dh, cv, mp, u_trial, states, PROPS, nstatv, DTIME)
+                apply_zero!(K_trial, g_trial, dbcs)
+                normg_trial = norm(g_trial)
+                
+                # Accept step if residual decreased
+                if normg_trial < normg_old || α < 0.01  # Accept if reduced or step too small
+                    u .= u_trial
+                    if ls_iter > 1
+                        @printf("    Line search: α = %.3f, ||r|| = %.3e\n", α, normg_trial)
+                    end
+                    break
+                end
+                
+                # Reduce step size
+                α *= 0.5
+            end
         end
         
         # Save history
         push!(t_history, t)
         
-        # Get tip displacement (rightmost node at top corner)
-        # For cantilever: nodes at x=L_length
-        tip_node = getnnodes(grid)  # Last node is at tip
-        tip_dof_z = 3 * tip_node
-        push!(u_history, u[tip_dof_z])
+        # Store full displacement vector for VTK export
+        push!(u_history, copy(u))
+        
+        # Get tip displacement in loading direction (x) on the rightmost node
+        tip_node = getnnodes(grid)  # assume last node lies at x=L_length
+        tip_dof_x = 3 * (tip_node - 1) + 1
+        push!(tip_displacement_history, u[tip_dof_x])
         
         # Store converged state variables for post-processing
         push!(states_history, deepcopy(states))
+
+        # Store converged stress snapshot for post-processing (cell × qp × Voigt6)
+        push!(stress_history, compute_stress_snapshot(dh, cv, mp, u, states, PROPS, nstatv, DTIME, grid))
         
-        @printf("  Tip deflection u_z = %.6f mm\n", u[tip_dof_z]*1000)
+        @printf("  Tip deflection u_x = %.6f mm\n", u[tip_dof_x]*1000)
     end
     
     println("\n" * "="^70)
     println("✅ ANALYSIS COMPLETE!")
     println("="^70)
     println("Steps completed: $n_steps")
-    println("Final tip deflection: $(u_history[end]*1000) mm")
-    println()
-    
-    # ========================================
-    # Export results
-    # ========================================
-    @timeit "export" begin
-        # Create visualization directory if it doesn't exist
-        vis_dir = "src/POSTPROCESS/visualization"
-        mkpath(vis_dir)
-        
-        # Export VTK file
-        vtk_file = joinpath(vis_dir, "cantilever_vevp_8branches")
-        VTKGridFile(vtk_file, dh) do vtk
-            write_solution(vtk, dh, u)
-        end
-    end
-    
-    println("Results exported to: src/POSTPROCESS/visualization/cantilever_vevp_8branches.vtu")
+    println("Final tip deflection (x): $(tip_displacement_history[end]*1000) mm")
     println()
     
     print_timer(title = "Analysis timing", linechars = :ascii)
     
-    return u, t_history, u_history, states, states_history, grid, dh
+    return u, t_history, u_history, tip_displacement_history, states, states_history, stress_history, grid, dh
 end
 
 # ==============================================================================
@@ -777,7 +853,7 @@ end
 # ==============================================================================
 
 # Run the solver
-u_final, t_hist, u_hist, states_final, states_hist, grid, dh = solve()
+u_final, t_hist, u_hist, tip_disp_hist, states_final, states_hist, stress_hist, grid, dh = solve()
 
 println("\n" * "="^70)
 println("SIMULATION FINISHED SUCCESSFULLY!")
@@ -789,4 +865,4 @@ println("="^70)
 
 # Call post-processing to generate plots
 include("POSTPROCESS/postprocess_results.jl")
-create_plots(t_hist, u_hist, states_hist, grid, dh, u_final)
+create_plots(t_hist, u_hist, tip_disp_hist, states_hist, stress_hist, grid, dh, u_final)

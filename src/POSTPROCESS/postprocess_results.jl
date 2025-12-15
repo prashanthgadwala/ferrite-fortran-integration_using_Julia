@@ -1,232 +1,451 @@
 #!/usr/bin/env julia
 """
-POST-PROCESSING FOR VEVP UMAT RESULTS
-======================================
+POST-PROCESSING FOR VEVP CUBE TENSION TEST
+===========================================
 
-This script provides visualization and analysis tools for VEVP simulation results.
+This script generates visualization plots and ParaView exports for VEVP
+(Viscoelastic-Viscoplastic) material analysis of a unit cube under simple
+tension loading (30% strain in x-direction).
 
 Features:
-- Load and parse VTK output files
-- Extract and visualize stress fields (von Mises, components)
-- Plot displacement evolution
-- Create load-displacement curves
-- Analyze state variables (F_vp, strain history)
+- Extract state variables: F_vp (viscoplastic deformation), E_ve (viscoelastic strain), gamma (plastic strain)
+- Plot nonlinear material behavior evolution over time
+- Create 3D deformed shape visualization
+- Export VTK time series for ParaView animation
+
+State Variable Layout (108 components per quadrature point):
+- F_vp (1-9): Viscoplastic deformation gradient (Voigt notation)
+- E_ve (10-18): Viscoelastic strain tensor (Voigt notation)
+- gamma (19): Accumulated plastic strain
+- b (20-28): Kinematic hardening tensor
+- AA (29-100): Maxwell branch internal variables (8 branches × 9 components)
+- BB (101-108): Maxwell branch scalars (8 branches)
+
+Note: Stress is NOT in state variables - it's computed by UMAT on-the-fly.
 
 Usage:
-    julia postprocess_results.jl [vtk_file]
-
-If no file specified, looks for 'pure_displacement_umat.vtu' in project root.
+    Called automatically from main.jl after simulation completes.
+    Outputs saved to src/POSTPROCESS/plots/
 """
 
 using Printf, Plots
+using WriteVTK
+using Ferrite
 
 """
-MAIN POST-PROCESSING FUNCTION FOR SOLID MECHANICS PLOTS
-Called from main.jl with simulation data
+    create_plots(t_hist, u_hist, states_history, grid, dh, u_final)
+
+MAIN POST-PROCESSING FUNCTION FOR VEVP CUBE TENSION TEST
+
+Generates 4 PNG plots and VTK time series showing nonlinear VEVP material behavior.
+Called automatically from main.jl after simulation completes.
+
+Arguments:
+- t_hist: Time history vector [n_steps]
+- u_hist: Applied displacement history [n_steps]
+- states_history: State variables at each time step [n_steps][n_cells][n_qpoints]
+- grid: Ferrite grid object (unit cube mesh)
+- dh: DofHandler with displacement field
+- u_final: Final displacement vector [ndofs]
+
+Outputs (saved to src/POSTPROCESS/plots/):
+1. force_displacement.png - Viscoelastic strain (E_ve) evolution
+2. stress_strain.png - Viscoplastic deformation (F_vp) and plastic strain (gamma)
+3. displacement_history.png - Applied loading history
+4. deformed_shape.png - 3D original vs deformed cube comparison
+5. vtk_timesteps/*.vtu - ParaView time series with state variables
 """
 function create_plots(t_hist, u_hist, states_history, grid, dh, u_final)
     
     println("\n" * "="^70)
-    println("GENERATING SOLID MECHANICS PLOTS")
+    println("GENERATING VEVP CUBE TENSION TEST VISUALIZATIONS")
     println("="^70)
     
-    # Create output directory (plots are already in POSTPROCESS/plots/)
+    # Create output directory
     output_dir = "src/POSTPROCESS/plots"
     mkpath(output_dir)
     
-    # 1. Stress-Strain Response (VEVP should show nonlinear behavior!)
-    plot_stress_strain(states_history, u_hist, output_dir)
-    
-    # 2. Force-Displacement Curve (compute from stress integration)
+    # 1. Viscoelastic strain evolution (E_ve components)
     plot_force_displacement(states_history, u_hist, grid, output_dir)
     
-    # 3. Displacement vs Load Step
+    # 2. Viscoplastic deformation (F_vp) and plastic strain (gamma)
+    plot_stress_strain(states_history, u_hist, output_dir)
+    
+    # 3. Applied displacement loading history
     plot_displacement_history(t_hist, u_hist, output_dir)
     
-    # 4. Deformed Shape
+    # 4. 3D deformed shape visualization
     plot_deformed_shape(grid, dh, u_final, output_dir)
+    
+    # 5. Export VTK time series for ParaView
+    export_vtk_with_results(t_hist, u_hist, states_history, grid, dh, output_dir)
     
     println("\n✅ All plots saved in: $output_dir/")
     println("="^70)
 end
 
 """
-Plot 1: Force-Displacement Curve 
-For cantilever beam: Force calculated from tip displacement and material stiffness
-Shows bending + viscoelastic relaxation behavior
+    export_vtk_with_results(t_hist, u_hist, states_history, grid, dh, output_dir)
+
+Export VTK time series for ParaView animation of VEVP cube tension test.
+
+Creates .pvd collection file with .vtu files for each time step containing:
+
+Nodal Data:
+- Displacement field (3D vectors showing cube deformation)
+
+Cell Data (extracted from 108-component state variable array):
+- F_vp: Viscoplastic deformation gradient diagonal [statev[1], statev[2], statev[3]]
+- E_ve: Viscoelastic strain tensor diagonal [statev[10], statev[11], statev[12]]
+- gamma: Accumulated plastic strain [statev[19]]
+
+State Variable Layout (per quadrature point):
+- F_vp (1-9): Viscoplastic deformation gradient in Voigt notation
+- E_ve (10-18): Viscoelastic strain tensor in Voigt notation
+- gamma (19): Scalar plastic strain measure
+- b (20-28): Kinematic hardening tensor
+- AA (29-100): 8 Maxwell branch internal variables (9 components each)
+- BB (101-108): 8 Maxwell branch scalars
+
+NOTE: Stress is NOT exported - it's computed on-the-fly by UMAT (not in state vars).
+To export stress, would need to recompute from F and statev using UMAT.
+
+Output:
+- results.pvd - ParaView collection (open this in ParaView)
+- step_XXXX.vtu - Individual time step files
+
+Usage in ParaView:
+1. Open results.pvd
+2. Apply "Warp By Vector" filter to displacement field
+3. Color by F_vp_11, E_ve_33, or gamma_plastic
+4. Use animation controls to see time evolution
+"""
+function export_vtk_with_results(t_hist, u_hist, states_history, grid, dh, output_dir)
+    
+    println("\n📊 Exporting VTK files for ParaView...")
+    
+    # Create VTK subdirectory
+    vtk_dir = joinpath(output_dir, "vtk_timesteps")
+    mkpath(vtk_dir)
+    
+    n_steps = length(states_history)
+    n_cells = getncells(grid)
+    
+    # Export each time step
+    pvd = paraview_collection("$vtk_dir/results")
+    
+    for step in 1:n_steps
+        # Get displacement at this step
+        u_step = u_hist[step]
+        
+        # Create VTK file for this timestep
+        vtk_file = joinpath(vtk_dir, "step_$(lpad(step, 4, '0'))")
+        
+        # Use VTKGridFile (Ferrite v1.0 API)
+        VTKGridFile(vtk_file, grid) do vtk
+            # Write displacement field
+            write_solution(vtk, dh, u_step)
+            
+            # Extract state variables
+            # STATEV layout (108 variables):
+            # 1-9:   F_vp (viscoplastic def gradient, Voigt)
+            # 10-18: E_ve (viscoelastic strain, Voigt)
+            # 19:    gamma (accumulated plastic strain)
+            # 20-28: b (kinematic hardening, Voigt)
+            # 29-100: AA (8 VE branches, 9 components each)
+            # 101-108: BB (8 VE branch scalars)
+            
+            states = states_history[step]
+            
+            # Preallocate arrays for cell data
+            gamma_plastic = zeros(n_cells)
+            F_vp_11 = zeros(n_cells)
+            F_vp_22 = zeros(n_cells)
+            F_vp_33 = zeros(n_cells)
+            E_ve_11 = zeros(n_cells)
+            E_ve_22 = zeros(n_cells)
+            E_ve_33 = zeros(n_cells)
+            E_ve_eqv = zeros(n_cells)
+            
+            # Extract from state variables
+            for cell_idx in 1:n_cells
+                cell_states = states[cell_idx]
+                n_qp = length(cell_states)
+                
+                # Average over quadrature points
+                F_vp_avg = zeros(3)
+                E_ve_avg = zeros(3)
+                gamma_avg = 0.0
+                
+                for qp in 1:n_qp
+                    statev = cell_states[qp]
+                    
+                    # F_vp diagonal components (1-3 in Voigt)
+                    F_vp_avg[1] += statev[1]  # F_vp_11
+                    F_vp_avg[2] += statev[2]  # F_vp_22
+                    F_vp_avg[3] += statev[3]  # F_vp_33
+                    
+                    # E_ve diagonal components (10-12 in Voigt)
+                    E_ve_avg[1] += statev[10]  # E_ve_11
+                    E_ve_avg[2] += statev[11]  # E_ve_22
+                    E_ve_avg[3] += statev[12]  # E_ve_33
+                    
+                    # Accumulated plastic strain (19)
+                    gamma_avg += statev[19]
+                end
+                
+                F_vp_avg ./= n_qp
+                E_ve_avg ./= n_qp
+                gamma_avg /= n_qp
+                
+                # Store in arrays
+                F_vp_11[cell_idx] = F_vp_avg[1]
+                F_vp_22[cell_idx] = F_vp_avg[2]
+                F_vp_33[cell_idx] = F_vp_avg[3]
+                
+                E_ve_11[cell_idx] = E_ve_avg[1]
+                E_ve_22[cell_idx] = E_ve_avg[2]
+                E_ve_33[cell_idx] = E_ve_avg[3]
+                
+                # Equivalent viscoelastic strain
+                E_ve_eqv[cell_idx] = sqrt(E_ve_avg[1]^2 + E_ve_avg[2]^2 + E_ve_avg[3]^2)
+                
+                gamma_plastic[cell_idx] = gamma_avg
+            end
+            
+            # Write cell data to VTK using Ferrite v1.0 API
+            write_cell_data(vtk, F_vp_11, "F_vp_11")
+            write_cell_data(vtk, F_vp_22, "F_vp_22")
+            write_cell_data(vtk, F_vp_33, "F_vp_33")
+            write_cell_data(vtk, E_ve_11, "E_ve_11")
+            write_cell_data(vtk, E_ve_22, "E_ve_22")
+            write_cell_data(vtk, E_ve_33, "E_ve_33")
+            write_cell_data(vtk, E_ve_eqv, "E_ve_equivalent")
+            write_cell_data(vtk, gamma_plastic, "gamma_plastic")
+            
+            # Add time information
+            pvd[t_hist[step]] = vtk
+        end
+    end
+    
+    # Save the PVD collection file
+    vtk_save(pvd)
+    
+    println("  ✅ Exported $n_steps VTK files to: $vtk_dir/")
+    println("  ✅ ParaView collection file: $vtk_dir/results.pvd")
+    println("\n  📌 To visualize in ParaView:")
+    println("     1. Open ParaView")
+    println("     2. File → Open → Select 'results.pvd'")
+    println("     3. Apply → View time series animation")
+    println("     4. Color by: E_ve_equivalent, gamma_plastic, F_vp_11, etc.")
+    println("     5. Add filters: Warp By Vector (u) to see deformation")
+    println("\n  ⚠️  NOTE: Stress is NOT exported (not stored in state variables)")
+    println("     Stress must be recomputed from F_vp, E_ve if needed")
+end
+
+"""
+Plot 1: Viscoelastic Strain Evolution (E_ve components)
+
+Extracts E_ve from state variables: statev[10], statev[11], statev[12]
+Plots 4 curves: E_ve_11, E_ve_22, E_ve_33, and magnitude ||E_ve||
+
+The nonlinear curves demonstrate time-dependent viscoelastic response from
+8 Maxwell branches with relaxation times spanning 1s to 1000s.
+
+Output: src/POSTPROCESS/plots/force_displacement.png
 """
 function plot_force_displacement(states_history, u_hist, grid, output_dir)
     
     n_steps = length(states_history)
-    forces = zeros(n_steps)
-    u_mm = abs.(u_hist) .* 1000  # m to mm
+    E_ve_11_hist = zeros(n_steps)
+    E_ve_22_hist = zeros(n_steps)
+    E_ve_33_hist = zeros(n_steps)
+    E_ve_mag_hist = zeros(n_steps)
     
-    # Cantilever beam parameters (must match main.jl!)
-    L_length = 0.1   # 10 cm beam length
-    L_height = 0.01  # 1 cm height
-    L_width = 0.01   # 1 cm width
-    
-    # Material properties
-    K_bulk = 1.47e6  # Pa (equilibrium bulk modulus)
-    G_shear = 0.564e6  # Pa
-    
-    # Cross-sectional properties
-    I = (L_width * L_height^3) / 12  # Second moment of area [m^4]
-    A = L_width * L_height  # Area [m^2]
-    
-    # Elastic modulus from K and G
-    E_mod = 9 * K_bulk * G_shear / (3 * K_bulk + G_shear)
-    
+    # Extract viscoelastic strain from state variables
     for step in 1:n_steps
-        # Tip deflection
-        delta = abs(u_hist[step])  # m
-        
-        # Cantilever beam formula: F = (3*E*I*δ) / L^3
-        # But with viscoelasticity, E varies with time
-        # Use effective modulus that decreases with relaxation
-        
-        # Time-dependent relaxation factor (Maxwell branches decay)
-        t_total = step * 100.0  # DTIME = 100s per step
-        relax_factor = 0.6 + 0.4 * exp(-t_total/50.0)  # Relaxation over time
-        
-        E_eff = E_mod * relax_factor
-        
-        # Tip force from beam bending theory
-        force = (3 * E_eff * I * delta) / (L_length^3)
-        
-        forces[step] = force  # Newtons
-    end
-    
-    # Plot force vs displacement
-    p = plot(u_mm, forces,
-             xlabel="Tip Deflection [mm]",
-             ylabel="Tip Force [N]",
-             title="Force-Displacement (Cantilever Beam + Viscoelastic)",
-             linewidth=2,
-             marker=:circle,
-             markersize=4,
-             legend=false,
-             grid=true,
-             color=:blue)
-    
-    savefig(p, joinpath(output_dir, "force_displacement.png"))
-    println("  ✓ force_displacement.png")
-    
-    # Print some diagnostics
-    println("    Max force: $(round(maximum(forces), digits=4)) N")
-    println("    Force range: $(round(minimum(forces), digits=4)) - $(round(maximum(forces), digits=4)) N")
-    println("    Stiffness degradation: $(round((1 - forces[end]/forces[1])*100, digits=1))%")
-end
-
-"""
-Plot 3: Displacement History vs Load Steps
-For cantilever: Shows tip deflection evolution
-"""
-function plot_displacement_history(t_hist, u_hist, output_dir)
-    
-    steps = 1:length(u_hist)
-    u_mm = abs.(u_hist) .* 1000  # m to mm
-    
-    p = plot(steps, u_mm,
-             xlabel="Load Step",
-             ylabel="Tip Deflection [mm]",
-             title="Cantilever Tip Deflection Evolution",
-             linewidth=2,
-             marker=:circle,
-             markersize=4,
-             color=:blue,
-             legend=false,
-             grid=true)
-    
-    savefig(p, joinpath(output_dir, "displacement_history.png"))
-    println("  ✓ displacement_history.png")
-end
-
-"""
-Plot 2: Stress-Strain Response from state variables
-For cantilever: Extract bending stress evolution at critical locations
-"""
-function plot_stress_strain(states_history, u_hist, output_dir)
-    
-    n_steps = length(states_history)
-    avg_stress = zeros(n_steps)
-    avg_strain = zeros(n_steps)
-    
-    # Material properties from VEVP
-    K_bulk = 1.47  # MPa (from K_inf = 0.001470588416 GPa)
-    G_shear = 0.564  # MPa (from G_inf)
-    
-    # Cantilever beam dimensions
-    L_length = 0.1  # 10 cm length
-    
-    # Debug: Print what's in state variables
-    println("\n  DEBUG: State variable structure:")
-    if !isempty(states_history)
-        sample_state = states_history[end][1][1]  # Last step, first cell, first qp
-        println("    Length: $(length(sample_state))")
-        println("    First 9 values (F_vp): $(sample_state[1:min(9, length(sample_state))])")
-        if length(sample_state) > 9
-            println("    Values 10-15 (stress?): $(sample_state[10:min(15, length(sample_state))])")
-        end
-        println("    → Extracting stress from statev[10-12]")
-    end
-    
-    for step in 1:n_steps
-        # Approximate strain from tip deflection
-        # Max bending strain: ε_max = (h/2) * (deflection/L^2)
-        delta = abs(u_hist[step])
-        h = 0.01  # beam height
-        strain = (h/2) * delta / (L_length^2)  # Approximate bending strain
-        avg_strain[step] = strain
-        
-        # Extract stress from state variables
         states = states_history[step]
-        stress_sum = 0.0
+        
+        # Average over all cells and quadrature points
+        E_ve_sum = zeros(3)
         count = 0
         
         for cell in 1:length(states)
             for qp in 1:length(states[cell])
                 statev = states[cell][qp]
-                if length(statev) >= 12
-                    # Extract stress components from state variables
-                    # Take maximum stress (bending creates gradient)
-                    stress_mag = sqrt(statev[10]^2 + statev[11]^2 + statev[12]^2)
-                    stress_sum += stress_mag
-                    count += 1
-                end
+                
+                # E_ve is stored in statev[10:18] (Voigt notation)
+                E_ve_sum[1] += statev[10]  # E_ve_11
+                E_ve_sum[2] += statev[11]  # E_ve_22
+                E_ve_sum[3] += statev[12]  # E_ve_33
+                count += 1
             end
         end
         
-        if count > 0
-            avg_stress[step] = (stress_sum / count) * 1000.0  # Scale to MPa
-        else
-            avg_stress[step] = 0.0
-        end
+        E_ve_avg = E_ve_sum / count
+        E_ve_11_hist[step] = E_ve_avg[1]
+        E_ve_22_hist[step] = E_ve_avg[2]
+        E_ve_33_hist[step] = E_ve_avg[3]
+        E_ve_mag_hist[step] = sqrt(E_ve_avg[1]^2 + E_ve_avg[2]^2 + E_ve_avg[3]^2)
     end
     
-    # Plot stress-strain curve
-    p = plot(avg_strain, avg_stress,
-             xlabel="Bending Strain [-]",
-             ylabel="Average Stress [MPa]",
-             title="Stress-Strain (Cantilever Bending + Viscoelastic)",
-             linewidth=2,
-             marker=:circle,
-             markersize=4,
-             color=:red,
-             legend=false,
-             grid=true)
+    steps = 1:n_steps
     
-    savefig(p, joinpath(output_dir, "stress_strain.png"))
-    println("  ✓ stress_strain.png")
+    # Plot viscoelastic strain components
+    p = plot(steps, [E_ve_11_hist, E_ve_22_hist, E_ve_33_hist, E_ve_mag_hist],
+             xlabel="Load Step",
+             ylabel="Viscoelastic Strain E_ve",
+             title="VEVP: Viscoelastic Strain Evolution (Nonlinear)",
+             label=["E_ve_11" "E_ve_22" "E_ve_33" "||E_ve||"],
+             linewidth=3,
+             marker=[:circle :square :diamond :star],
+             markersize=5,
+             grid=true,
+             minorgrid=true,
+             legend=:topleft)
     
-    # Diagnostics
-    println("    Max strain: $(round(maximum(avg_strain)*100, digits=3))%")
-    println("    Max stress: $(round(maximum(avg_stress), digits=3)) MPa")
-    println("    Final stress: $(round(avg_stress[end], digits=3)) MPa")
+    savefig(p, joinpath(output_dir, "force_displacement.png"))
+    println("  ✓ force_displacement.png (viscoelastic strain evolution)")
+    
+    # Print diagnostics
+    println("    Max E_ve magnitude: $(round(maximum(E_ve_mag_hist), digits=6))") 
+    println("    Final E_ve_33 (loading dir): $(round(E_ve_33_hist[end], digits=6))")
 end
 
 """
-Plot 4: Deformed Shape Visualization
+Plot 3: Displacement Loading History
+
+Shows prescribed displacement at right face (x=1) over time steps.
+Loading: 0 → 0.3 units = 30% engineering strain in x-direction.
+
+This is the input to the simulation (controlled loading parameter).
+The material response (F_vp, E_ve, gamma, stress) is analyzed in other plots.
+
+Output: src/POSTPROCESS/plots/displacement_history.png
+"""
+function plot_displacement_history(t_hist, u_hist, output_dir)
+    
+    steps = 1:length(u_hist)
+    u_mm = u_hist .* 1000  # m to mm (keep sign)
+    
+    p = plot(steps, u_mm,
+             xlabel="Load Step",
+             ylabel="Applied Displacement [mm]",
+             title="Displacement Loading History (Cube Tension Test)",
+             linewidth=3,
+             marker=:circle,
+             markersize=5,
+             color=:darkblue,
+             legend=false,
+             grid=true,
+             minorgrid=true)
+    
+    savefig(p, joinpath(output_dir, "displacement_history.png"))
+    println("  ✓ displacement_history.png")
+    
+    println("    Total displacement: $(round(u_mm[end], digits=3)) mm")
+    println("    Loading rate: $(round(u_mm[end]/length(steps), digits=4)) mm/step")
+end
+
+"""
+Plot 2: F_vp and Plastic Strain Evolution
+Shows viscoplastic deformation accumulation - VEVP nonlinear behavior
+"""
+function plot_stress_strain(states_history, u_hist, output_dir)
+    
+    n_steps = length(states_history)
+    F_vp_11_hist = zeros(n_steps)
+    F_vp_22_hist = zeros(n_steps)
+    F_vp_33_hist = zeros(n_steps)
+    gamma_hist = zeros(n_steps)
+    
+    # Extract F_vp and gamma from state variables
+    for step in 1:n_steps
+        states = states_history[step]
+        
+        # Average over all cells and quadrature points
+        F_vp_sum = zeros(3)
+        gamma_sum = 0.0
+        count = 0
+        
+        for cell in 1:length(states)
+            for qp in 1:length(states[cell])
+                statev = states[cell][qp]
+                
+                # F_vp diagonal components (1-3 in Voigt)
+                F_vp_sum[1] += statev[1]  # F_vp_11
+                F_vp_sum[2] += statev[2]  # F_vp_22
+                F_vp_sum[3] += statev[3]  # F_vp_33
+                
+                # Accumulated plastic strain
+                gamma_sum += statev[19]
+                count += 1
+            end
+        end
+        
+        F_vp_avg = F_vp_sum / count
+        F_vp_11_hist[step] = F_vp_avg[1]
+        F_vp_22_hist[step] = F_vp_avg[2]
+        F_vp_33_hist[step] = F_vp_avg[3]
+        gamma_hist[step] = gamma_sum / count
+    end
+    
+    steps = 1:n_steps
+    
+    # Create subplot layout
+    p = plot(layout=(2,1), size=(900, 800))
+    
+    # Plot 1: F_vp components
+    plot!(p[1], steps, [F_vp_11_hist, F_vp_22_hist, F_vp_33_hist],
+          xlabel="Load Step",
+          ylabel="F_vp (Viscoplastic Def. Gradient)",
+          title="VEVP: Viscoplastic Deformation Evolution",
+          label=["F_vp_11" "F_vp_22" "F_vp_33"],
+          linewidth=3,
+          marker=[:circle :square :diamond],
+          markersize=5,
+          grid=true,
+          minorgrid=true,
+          legend=:best)
+    
+    # Plot 2: Accumulated plastic strain
+    plot!(p[2], steps, gamma_hist,
+          xlabel="Load Step",
+          ylabel="γ (Accumulated Plastic Strain)",
+          title="Plastic Strain Accumulation (Nonlinear Growth)",
+          linewidth=3,
+          marker=:circle,
+          markersize=5,
+          color=:red,
+          legend=false,
+          grid=true,
+          minorgrid=true)
+    
+    savefig(p, joinpath(output_dir, "stress_strain.png"))
+    println("  ✓ stress_strain.png (F_vp and γ evolution)")
+    
+    # Diagnostics
+    println("    Final γ (plastic strain): $(round(gamma_hist[end], digits=6))")
+    println("    Final F_vp_33: $(round(F_vp_33_hist[end], digits=6))")
+    if F_vp_33_hist[1] != 0
+        println("    Plastic deformation: $((F_vp_33_hist[end] - F_vp_33_hist[1])/F_vp_33_hist[1]*100)%")
+    end
+end
+
+"""
+Plot 4: 3D Deformed Shape Visualization
+
+Compares original vs deformed cube using side-by-side 3D scatter plots:
+- Left: Original cube (1×1×1 units, blue)
+- Right: Deformed cube (colored by displacement magnitude, viridis)
+
+Features:
+- camera=(30, 30) for proper 3D perspective
+- Colorbar shows displacement magnitude distribution
+- Demonstrates elongation (x-dir) and contraction (y,z-dir Poisson effect)
+- Captures nonlinear VEVP behavior under 30% large strain
+
+Output: src/POSTPROCESS/plots/deformed_shape.png
 """
 function plot_deformed_shape(grid, dh, u, output_dir)
     
@@ -247,31 +466,48 @@ function plot_deformed_shape(grid, dh, u, output_dir)
     y_def = y_orig .+ uy
     z_def = z_orig .+ uz
     
-    # Plot in x-z plane
-    p = plot(layout=(1,2), size=(1200, 400))
+    # Displacement magnitude for coloring
+    u_mag = sqrt.(ux.^2 + uy.^2 + uz.^2)
     
-    scatter!(p[1], x_orig, z_orig,
+    # Create 3D plot with both configurations
+    p = plot(layout=(1,2), size=(1400, 600), 
+             camera=(30, 30),
+             dpi=150)
+    
+    # Original configuration
+    scatter!(p[1], x_orig, y_orig, z_orig,
              xlabel="X [mm]",
-             ylabel="Z [mm]",
-             title="Original Configuration",
+             ylabel="Y [mm]",
+             zlabel="Z [mm]",
+             title="Original Cube",
              marker=:circle,
-             markersize=2,
+             markersize=8,
              color=:blue,
              legend=false,
-             aspect_ratio=:equal)
+             camera=(30, 30),
+             grid=true)
     
-    scatter!(p[2], x_def, z_def,
+    # Deformed configuration with displacement coloring
+    scatter!(p[2], x_def, y_def, z_def,
              xlabel="X [mm]",
-             ylabel="Z [mm]",
-             title="Deformed Configuration",
+             ylabel="Y [mm]",
+             zlabel="Z [mm]",
+             title="Deformed Cube (colored by |u|)",
              marker=:circle,
-             markersize=2,
-             color=:red,
+             markersize=8,
+             marker_z=u_mag,
+             color=:viridis,
+             colorbar=true,
+             colorbar_title="|u| [mm]",
              legend=false,
-             aspect_ratio=:equal)
+             camera=(30, 30),
+             grid=true)
     
     savefig(p, joinpath(output_dir, "deformed_shape.png"))
-    println("  ✓ deformed_shape.png")
+    println("  ✓ deformed_shape.png (3D visualization)")
+    
+    println("    Max displacement: $(round(maximum(u_mag), digits=4)) mm")
+    println("    Z-displacement range: [$(round(minimum(uz), digits=4)), $(round(maximum(uz), digits=4))] mm")
 end
 
 # Check if required packages are installed
