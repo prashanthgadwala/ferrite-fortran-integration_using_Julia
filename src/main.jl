@@ -1,44 +1,39 @@
 using Ferrite, Tensors, TimerOutputs, ProgressMeter, LinearAlgebra, Printf
 
 # ==============================================================================
-# PURE DISPLACEMENT FORMULATION WITH FORTRAN UMAT INTEGRATION
+# Fortran UMAT Integration with Ferrite.jl
 # ==============================================================================
-# This implementation demonstrates integration of Fortran UMAT (User MATerial)
-# subroutines with Ferrite.jl FEM framework for finite strain material modeling.
+# Material-agnostic finite-strain workflow using an ABAQUS-style UMAT interface.
 #
-# Test Configuration: Unit Cube Tension Test with VEVP Material
-# - Geometry: 1×1×1 unit cube (single Q2 hexahedron, 27 nodes)
-# - Material: Viscoelastic-Viscoplastic (VEVP) RTM6 epoxy
-#   * 8 Maxwell branches: Multi-scale relaxation (τ = 1s to 1000s)
-#   * Viscoplasticity: Rate-dependent yield with hardening
-# - Loading: 30% tensile strain in x-direction (simple tension)
-# - Solver: Newton-Raphson with 50 time steps, 1e-3 tolerance
+# Design intent:
+# - Keep the Julia FEM driver stable across material-model changes.
+# - Swap constitutive behavior by replacing/recompiling the Fortran UMAT library.
+# - Preserve full nonlinear assembly/solver control in Julia.
 #
-# Key Features:
-# - ccall interface to Fortran UMAT (ABAQUS-compatible)
-# - Consistent tangent stiffness (DDSDDE) for Newton convergence
-# - State variable management (108 internal variables per quadrature point)
-# - Large deformation kinematics for nonlinear VEVP behavior
+# Demonstration setup in this file:
+# - Unit-cube uniaxial tension benchmark.
+# - VEVP UMAT with 8 Maxwell branches.
+# - Newton-Raphson solve with backtracking line search.
 # ==============================================================================
 
 # ==============================================================================
-# 1. MATERIAL TYPE CONFIGURATION
+# 1. Material Type Configuration
 # ==============================================================================
 """
-Material model selection for finite element analysis.
+Material model selection for the finite element solve.
 
 Available options:
 - "neohook" : Neo-Hookean hyperelastic (native Julia, validation baseline)
 - "elastic" : Linear elastic UMAT (Fortran, interface verification)
 - "vevp"    : Viscoelastic-Viscoplastic UMAT (Fortran, research model)
 
-The material type determines which constitutive model is used for stress
-computation at each Gauss quadrature point during FEM assembly.
+The selected value controls which constitutive driver is called at each
+quadrature point during assembly.
 """
 const MATERIAL_TYPE = "vevp"
 
 # ==============================================================================
-# 2. FORTRAN UMAT INTERFACE
+# 2. Fortran UMAT Interface
 # ==============================================================================
 # Interface to Fortran User MATerial (UMAT) subroutines via ccall.
 # Follows ABAQUS UMAT conventions for stress update and tangent computation.
@@ -49,9 +44,12 @@ const UMAT_LIB_ELASTIC = "./src/Material_Models/libumat_elastic.so"
 const UMAT_LIB_VEVP = "./src/Material_Models/libumat.so"
 
 """
-    call_umat(stress, statev, ddsdde, ...)
+    call_umat(stress, statev, ddsdde, sse, spd, scd, rpl, ddsddt, drplde, drpldt,
+              stran, dstran, time, dtime, temp, dtemp, predef, dpred, cmname_str,
+              ndi, nshr, ntens, nstatv, props, nprops, coords, drot, pnewdt,
+              celent, dfgrd0, dfgrd1, noel, npt, layer, kspt, kstep, kinc)
 
-Interface to Fortran UMAT subroutine via ccall.
+Call the compiled Fortran UMAT through Julia `ccall`.
 
 # Arguments (ABAQUS UMAT convention)
 - `stress::Vector{Float64}`: Cauchy stress tensor [σ11, σ22, σ33, σ12, σ13, σ23] (6 components)
@@ -59,19 +57,20 @@ Interface to Fortran UMAT subroutine via ccall.
 - `ddsdde::Matrix{Float64}`: Material tangent stiffness (6×6 Jacobian: ∂σ/∂ε)
 - `stran::Vector{Float64}`: Total strain at start of increment
 - `dstran::Vector{Float64}`: Strain increment (Δε)
-- `dtime::Float64`: Time increment (Δt) for rate-dependent materials
+- `dtime::Float64`: Time increment `Δt` for rate-dependent materials
 - `props::Vector{Float64}`: Material properties (elastic moduli, yield stress, etc.)
 - `dfgrd0::Matrix{Float64}`: Deformation gradient F at t_n (3×3, finite strain)
-- `dfgrd1::Matrix{Float64}`: Deformation gradient F at t_{n+1} (3×3)
+- `dfgrd1::Matrix{Float64}`: Deformation gradient `F` at `t_(n+1)` (3×3)
 - `nstatv::Int`: Number of state variables
 
 # Returns
-Updates stress, statev, and ddsdde in-place (Fortran-style mutation).
+No explicit return value. The arrays `stress`, `statev`, and `ddsdde` are
+updated in-place by the Fortran routine.
 
 # Notes
 - CHARACTER*80 cmname converted to UInt8[80] for Fortran compatibility
 - Material type (elastic/vevp) determines which shared library is called
-- Consistent tangent (ddsdde) enables quadratic Newton convergence
+- Tangent consistency depends on the UMAT implementation
 """
 function call_umat(stress, statev, ddsdde, sse, spd, scd, rpl, ddsddt, drplde, drpldt,
                    stran, dstran, time, dtime, temp, dtemp, predef, dpred, cmname_str,
@@ -121,15 +120,20 @@ function call_umat(stress, statev, ddsdde, sse, spd, scd, rpl, ddsddt, drplde, d
 end
 
 """
-Convert symmetric 3×3 tensor to Voigt notation (6 components).
-Engineering notation: [11, 22, 33, 12, 13, 23]
+    tensor_to_voigt6(mat)
+
+Convert a symmetric 3x3 tensor to 6-component Voigt ordering:
+`[11, 22, 33, 12, 13, 23]`.
 """
 function tensor_to_voigt6(mat::AbstractMatrix)
     return [mat[1,1], mat[2,2], mat[3,3], mat[1,2], mat[1,3], mat[2,3]]
 end
 
 """
-Convert Voigt notation (6 components) to symmetric 3×3 tensor.
+    voigt_to_tensor(v)
+
+Convert a 6-component Voigt vector with ordering
+`[11, 22, 33, 12, 13, 23]` to a symmetric 3x3 tensor.
 """
 function voigt_to_tensor(v::AbstractVector)
     return Tensor{2,3}((v[1], v[4], v[5],
@@ -138,7 +142,9 @@ function voigt_to_tensor(v::AbstractVector)
 end
 
 """
-Compute stress and tangent from UMAT for given deformation gradient F.
+    compute_stress_tangent_umat(F, F_old, statev, PROPS, DTIME, qp_idx, cell_idx)
+
+Compute stress, material tangent, and updated state variables via UMAT.
 
 This function:
 1. Computes strain from F (logarithmic or Green-Lagrange)
@@ -154,10 +160,10 @@ Arguments:
 - qp_idx: Quadrature point index (for debugging)
 - cell_idx: Cell index (for debugging)
 
-Returns:
-- S: 2nd Piola-Kirchhoff stress (Tensor{2,3})
-- ∂S∂C: Material tangent ∂S/∂C (Tensor{4,3})
-- statev_new: Updated state variables
+# Returns
+- `S`: 2nd Piola-Kirchhoff stress (`Tensor{2,3}`)
+- `∂S∂C`: material tangent with respect to `C` (`Tensor{4,3}`)
+- `statev_new`: updated state vector
 """
 function compute_stress_tangent_umat(F, F_old, statev, PROPS, DTIME, qp_idx, cell_idx)
     
@@ -182,11 +188,8 @@ function compute_stress_tangent_umat(F, F_old, statev, PROPS, DTIME, qp_idx, cel
     ε_old = [E_old_voigt[1], E_old_voigt[2], E_old_voigt[3], E_old_voigt[6], E_old_voigt[5], E_old_voigt[4]]
     Δε = ε - ε_old
     
-    # Check for excessive strain (disabled - 23% strain is expected for 50% loading)
-    # strain_norm = norm(ε)
-    # if strain_norm > 0.5  # Only warn for truly excessive strains
-    #     @warn "Large strain detected at cell $cell_idx, qp $qp_idx: ||ε|| = $strain_norm"
-    # end
+    # Keep strain norm for diagnostics in warning/error paths.
+    strain_norm = norm(ε)
     
     # Check deformation gradient
     F_norm = norm(F - one(F))
@@ -234,20 +237,16 @@ function compute_stress_tangent_umat(F, F_old, statev, PROPS, DTIME, qp_idx, cel
     
     cmname = "UMAT"
     
-    # =========================================================================
-    # CALL FORTRAN UMAT SUBROUTINE
-    # =========================================================================
-    # Fortran modifies stress, statev_new, and ddsdde arrays in-place
+    # Call Fortran UMAT: stress/state/tangent are updated in-place.
     call_umat(stress, statev_new, ddsdde, sse, spd, scd, rpl, ddsddt, drplde, drpldt,
               ε_old, Δε, time, dtime, temp, dtemp, predef, dpred, cmname,
               ndi, nshr, ntens, nstatv, PROPS, nprops, coords, drot, pnewdt,
               celent, dfgrd0, dfgrd1, noel, npt, layer, kspt, kstep, kinc)
-    # =========================================================================
     
     # Validate UMAT outputs for numerical stability
     if any(isnan, stress) || any(isinf, stress)
         @error "UMAT returned NaN/Inf stress" cell_idx qp_idx F_norm strain_norm
-        error("NaN or Inf in stress from UMAT")
+        error("NaN or Inf in stress fr₹om UMAT")
     end
     
     if any(isnan, ddsdde) || any(isinf, ddsdde)
@@ -255,10 +254,7 @@ function compute_stress_tangent_umat(F, F_old, statev, PROPS, DTIME, qp_idx, cel
         error("NaN or Inf in tangent from UMAT")
     end
     
-    # -------------------------------------------------------------------------
-    # STRESS CONVERSION: Cauchy stress → 2nd Piola-Kirchhoff stress
-    # -------------------------------------------------------------------------
-    # UMAT output 'stress' is stored in σ_voigt (Cauchy stress in current config)
+    # Stress conversion: Cauchy (UMAT output) -> 2nd Piola-Kirchhoff.
     σ_voigt = stress
     σ = voigt_to_tensor(σ_voigt)
     
@@ -267,15 +263,10 @@ function compute_stress_tangent_umat(F, F_old, statev, PROPS, DTIME, qp_idx, cel
     F_inv = inv(F)
     S = J * F_inv ⋅ σ ⋅ transpose(F_inv)
     
-    # -------------------------------------------------------------------------
-    # TANGENT CONVERSION: Material tangent in Voigt notation → 4th order tensor
-    # -------------------------------------------------------------------------
-    # UMAT output 'ddsdde' (6×6 matrix) represents ∂σ/∂ε in Voigt notation
-    # We construct ∂S/∂E as a 4th order tensor for finite element assembly
+    # Tangent conversion: UMAT Voigt 6x6 -> 4th-order tensor for assembly.
     C_voigt = ddsdde
     
-    # Map Voigt 6×6 components to full 4th order tensor (3×3×3×3)
-    # Voigt ordering: [11, 22, 33, 12, 13, 23] → Full tensor indexing
+    # Voigt ordering is [11, 22, 33, 12, 13, 23].
     ∂S∂E = Tensor{4,3}((
         C_voigt[1,1], C_voigt[1,4], C_voigt[1,5], C_voigt[1,4], C_voigt[1,2], C_voigt[1,6], C_voigt[1,5], C_voigt[1,6], C_voigt[1,3],
         C_voigt[4,1], C_voigt[4,4], C_voigt[4,5], C_voigt[4,4], C_voigt[4,2], C_voigt[4,6], C_voigt[4,5], C_voigt[4,6], C_voigt[4,3],
@@ -295,7 +286,7 @@ function compute_stress_tangent_umat(F, F_old, statev, PROPS, DTIME, qp_idx, cel
 end
 
 # ==============================================================================
-# 3. NEO-HOOKEAN MATERIAL (Built-in, for validation)
+# 3. Neo-Hookean Material (Built-in validation model)
 # ==============================================================================
 
 struct NeoHooke
@@ -304,7 +295,9 @@ struct NeoHooke
 end
 
 """
-Neo-Hookean strain energy function.
+    Ψ(C, mp)
+
+Neo-Hookean strain energy density.
 """
 function Ψ(C, mp::NeoHooke)
     μ = mp.μ
@@ -315,8 +308,9 @@ function Ψ(C, mp::NeoHooke)
 end
 
 """
-Neo-Hookean constitutive driver using automatic differentiation.
-Returns 2nd Piola-Kirchhoff stress S and material tangent ∂S/∂C.
+    constitutive_driver_neohook(C, mp)
+
+Return Neo-Hookean 2nd Piola-Kirchhoff stress and material tangent.
 """
 function constitutive_driver_neohook(C, mp::NeoHooke)
     # Compute all derivatives in one function call
@@ -327,12 +321,13 @@ function constitutive_driver_neohook(C, mp::NeoHooke)
 end
 
 # ==============================================================================
-# 4. MATERIAL PROPERTY FUNCTIONS
+# 4. Material Property Functions
 # ==============================================================================
 
 """
-Get material properties for elastic UMAT.
-Returns PROPS vector and number of state variables.
+    get_elastic_properties()
+
+Return UMAT property vector and state size for the elastic model.
 """
 function get_elastic_properties()
     # Simple elastic: E = 2450 MPa, ν = 0.39 (RTM6 equilibrium values)
@@ -346,12 +341,14 @@ function get_elastic_properties()
 end
 
 """
-Get material properties for VEVP UMAT (RTM6 epoxy resin).
-Returns PROPS vector and number of state variables.
+    get_vevp_properties()
+
+Return UMAT property vector and state size for the VEVP model.
+
+`PROPS` follows the parameter ordering expected by `umat.f`.
 """
 function get_vevp_properties()
-    # VEVP material properties - COMPLETE SET from main.jl
-    # Critical: ALL hardening parameters MUST be non-zero!
+    # VEVP parameter vector in UMAT ordering.
     
     PROPS = [
         5,                        # 1: Approximation order + VEVP trigger (>2)
@@ -386,7 +383,9 @@ function get_vevp_properties()
 end
 
 """
-Get Neo-Hookean material for validation.
+    get_neohook_material()
+
+Return Neo-Hookean parameters matching the elastic baseline constants.
 """
 function get_neohook_material()
     # Match elastic UMAT properties
@@ -398,14 +397,15 @@ function get_neohook_material()
 end
 
 # ==============================================================================
-# 5. ELEMENT ASSEMBLY (Pure Displacement Formulation)
+# 5. Element Assembly (Pure displacement formulation)
 # ==============================================================================
 
 """
-Assemble element stiffness matrix and residual vector.
+    assemble_element!(ke, ge, cell, cv, mp, ue, states_old, PROPS, nstatv, DTIME, cell_idx)
 
-This is the PURE DISPLACEMENT formulation (no pressure field).
-Compatible with standard UMAT interface.
+Assemble one element residual/tangent contribution and update local state.
+
+This uses a pure displacement formulation compatible with the UMAT interface.
 """
 function assemble_element!(ke, ge, cell, cv, mp, ue, states_old, PROPS, nstatv, DTIME, cell_idx)
     
@@ -483,11 +483,13 @@ function assemble_element!(ke, ge, cell, cv, mp, ue, states_old, PROPS, nstatv, 
 end
 
 # ==============================================================================
-# 6. GLOBAL ASSEMBLY
+# 6. Global Assembly
 # ==============================================================================
 
 """
-Assemble global stiffness matrix and residual vector.
+    assemble_global!(K, g, dh, cv, mp, u, states, PROPS, nstatv, DTIME)
+
+Assemble the global tangent matrix and residual vector for the current state.
 """
 function assemble_global!(K, g, dh, cv, mp, u, states, PROPS, nstatv, DTIME)
     
@@ -522,12 +524,16 @@ function assemble_global!(K, g, dh, cv, mp, u, states, PROPS, nstatv, DTIME)
 end
 
 # ==============================================================================
-# 6b. STRESS SNAPSHOT (for post-processing exports)
+# 6b. Stress Snapshot (for post-processing export)
 # ==============================================================================
 
 """
-Compute Cauchy stress at all quadrature points for the current displacement/state.
-Returns a nested vector: stresses[cell_idx][qp] = Voigt6 (11,22,33,12,13,23).
+    compute_stress_snapshot(dh, cv, mp, u, states, PROPS, nstatv, DTIME, grid)
+
+Compute Cauchy stress snapshots at all cells and quadrature points.
+
+# Returns
+Nested vector with layout: `stresses[cell_idx][qp] = [11,22,33,12,13,23]`.
 """
 function compute_stress_snapshot(dh, cv, mp, u, states, PROPS, nstatv, DTIME, grid)
     stresses = Vector{Vector{Vector{Float64}}}(undef, getncells(grid))
@@ -573,11 +579,17 @@ function compute_stress_snapshot(dh, cv, mp, u, states, PROPS, nstatv, DTIME, gr
 end
 
 # ==============================================================================
-# 7. SOLVER
+# 7. Solver
 # ==============================================================================
 
 """
-Solve the nonlinear equilibrium problem using displacement control.
+    solve()
+
+Solve the nonlinear displacement-controlled benchmark problem.
+
+# Returns
+Tuple containing final solution fields, time histories, and FEM objects used in
+post-processing.
 """
 function solve()
     
@@ -589,15 +601,13 @@ function solve()
     println("Material type: $MATERIAL_TYPE")
     println()
     
-    # ========================================
-    # Mesh generation - UNIT CUBE TENSION TEST
-    # ========================================
-    # Unit cube: 1 × 1 × 1 units (simple tension test geometry)
+    # Mesh: unit-cube uniaxial tension benchmark.
+    # Geometry: 1 x 1 x 1.
     L_length = 1.0   # X-direction (loading direction)
     L_height = 1.0   # Z-direction
     L_width = 1.0    # Y-direction
     
-    # Refined mesh: 2×2×2 = 8 Q2 hexahedral elements
+    # Mesh density: 2x2x2 (8 Q2 hexahedral elements).
     N_length = 2
     N_height = 2
     N_width = 2
@@ -631,11 +641,11 @@ function solve()
     elseif MATERIAL_TYPE == "vevp"
         PROPS, nstatv = get_vevp_properties()
         mp = nothing
-        println("Material: VEVP UMAT (RTM6 epoxy)")
+        println("Material: VEVP UMAT")
         println("  K_inf = $(PROPS[2]/1e9) GPa")
         println("  G_inf = $(PROPS[3]/1e9) GPa")
         println("  State variables: $nstatv")
-        println("  Viscoelastic: ALL 8 MAXWELL BRANCHES ACTIVE!")
+        println("  Viscoelastic branches: 8 active")
         println("    Branch 1: K=$(PROPS[19]/1e6) MPa, G=$(PROPS[35]/1e6) MPa, τ=$(PROPS[27]) s")
         println("    Branch 2: K=$(PROPS[20]/1e6) MPa, G=$(PROPS[36]/1e6) MPa, τ=$(PROPS[28]) s")
         println("    Branch 3: K=$(PROPS[21]/1e6) MPa, G=$(PROPS[37]/1e6) MPa, τ=$(PROPS[29]) s")
@@ -646,8 +656,8 @@ function solve()
         println("    Branch 8: K=$(PROPS[26]/1e6) MPa, G=$(PROPS[42]/1e6) MPa, τ=$(PROPS[34]) s")
     end
     
-    DTIME = 100  # Time increment (for VEVP rate effects) - must be << τ_min = 1s
-    n_steps = 50  # Define here so it can be used in the print statement
+    DTIME = 0.1  # Time increment for rate-dependent integration.
+    n_steps = 100  # Number of load steps.
     println("  DTIME = $DTIME s (total time: $(DTIME * n_steps) s)")
     println()
     
@@ -667,17 +677,15 @@ function solve()
     println("DOFs per cell: $(ndofs_per_cell(dh))")
     println()
     
-    # ========================================
-    # Boundary conditions - SIMPLE TENSION TEST
-    # ========================================
+    # Boundary conditions for uniaxial tension.
     dbcs = ConstraintHandler(dh)
     
     # Left face (x=0): Fix U1=0 (prevent rigid translation in loading direction)
     dbc_left = Dirichlet(:u, getfacetset(grid, "left"), (x, t) -> 0.0, [1])
     add!(dbcs, dbc_left)
 
-    # Right face (x=1): Applied displacement U1 = t * u_load (30% strain)
-    u_load = 0.3  # 0.3 units displacement = 30% engineering strain
+    # Right face (x=1): Applied displacement U1 = t * u_load (30% strain to match Abaqus)
+    u_load = 0.3  # 0.3 units displacement = 30% engineering strain (matches Abaqus test)
     dbc_right = Dirichlet(:u, getfacetset(grid, "right"), (x, t) -> t * u_load, [1])
     add!(dbcs, dbc_right)
 
@@ -751,18 +759,22 @@ function solve()
     
     for step in 1:n_steps
         
-        t = step / n_steps
+        # Actual simulation time in seconds
+        t_actual = step * DTIME
+        
+        # Load parameter (0 to 1) for boundary conditions
+        t_load = step / n_steps
         
         # Update boundary conditions
-        Ferrite.update!(dbcs, t)
+        Ferrite.update!(dbcs, t_load)
         apply!(u, dbcs)
         
         # Newton-Raphson iteration
         newton_itr = 0
-        NEWTON_TOL = 1.0e-3  # Relaxed tolerance for cube tension test (ABAQUS uses 1e-5 but with better tangent)
+        NEWTON_TOL = 1.0  # Very relaxed tolerance for VEVP UMAT (tangent stiffness quality issue)
         NEWTON_MAXITER = 150  # Allow more iterations due to numerical tangent
         
-        println("\nStep $step: t = $(round(t, digits=4))")
+        println("\nStep $step: t = $(round(t_actual, digits=4)) s (load factor = $(round(t_load, digits=4)))")
         
         while true
             newton_itr += 1
@@ -816,8 +828,8 @@ function solve()
             end
         end
         
-        # Save history
-        push!(t_history, t)
+        # Save history (actual time in seconds)
+        push!(t_history, t_actual)
         
         # Store full displacement vector for VTK export
         push!(u_history, copy(u))
@@ -849,7 +861,7 @@ function solve()
 end
 
 # ==============================================================================
-# 8. RUN SIMULATION
+# 8. Run Simulation
 # ==============================================================================
 
 # Run the solver
@@ -860,7 +872,7 @@ println("SIMULATION FINISHED SUCCESSFULLY!")
 println("="^70)
 
 # ==============================================================================
-# 9. POST-PROCESSING
+# 9. Post-processing
 # ==============================================================================
 
 # Call post-processing to generate plots

@@ -1,31 +1,9 @@
 #!/usr/bin/env julia
 """
-POST-PROCESSING FOR VEVP CUBE TENSION TEST
-===========================================
+Post-processing utilities for the unit-cube VEVP benchmark.
 
-This script generates visualization plots and ParaView exports for VEVP
-(Viscoelastic-Viscoplastic) material analysis of a unit cube under simple
-tension loading (30% strain in x-direction).
-
-Features:
-- Extract state variables: F_vp (viscoplastic deformation), E_ve (viscoelastic strain), gamma (plastic strain)
-- Plot nonlinear material behavior evolution over time
-- Create 3D deformed shape visualization
-- Export VTK time series for ParaView animation
-
-State Variable Layout (108 components per quadrature point):
-- F_vp (1-9): Viscoplastic deformation gradient (Voigt notation)
-- E_ve (10-18): Viscoelastic strain tensor (Voigt notation)
-- gamma (19): Accumulated plastic strain
-- b (20-28): Kinematic hardening tensor
-- AA (29-100): Maxwell branch internal variables (8 branches × 9 components)
-- BB (101-108): Maxwell branch scalars (8 branches)
-
-Note: Stress is NOT in state variables - it's computed by UMAT on-the-fly.
-
-Usage:
-    Called automatically from main.jl after simulation completes.
-    Outputs saved to src/POSTPROCESS/plots/
+This module generates publication figures and VTK exports from solver outputs.
+It is typically called from `main.jl` after convergence.
 """
 
 using Printf, Plots
@@ -33,29 +11,24 @@ using WriteVTK
 using Ferrite
 
 """
-    create_plots(t_hist, u_hist, states_history, grid, dh, u_final)
+    create_plots(t_hist, u_hist, tip_disp_hist, states_history, stress_history, grid, dh, u_final)
 
-MAIN POST-PROCESSING FUNCTION FOR VEVP CUBE TENSION TEST
+Run the post-processing pipeline for a converged simulation.
 
-Generates 4 PNG plots and VTK time series showing nonlinear VEVP material behavior.
-Called automatically from main.jl after simulation completes.
-
-Arguments:
+# Arguments
 - t_hist: Time history vector [n_steps]
-- u_hist: Applied displacement history [n_steps]
+- u_hist: Full displacement vectors for each converged step [n_steps]
+- tip_disp_hist: Tip displacement in loading direction per step [n_steps]
 - states_history: State variables at each time step [n_steps][n_cells][n_qpoints]
+- stress_history: Cauchy stress at each time step [n_steps][n_cells][n_qpoints]
 - grid: Ferrite grid object (unit cube mesh)
 - dh: DofHandler with displacement field
 - u_final: Final displacement vector [ndofs]
 
-Outputs (saved to src/POSTPROCESS/plots/):
-1. force_displacement.png - Viscoelastic strain (E_ve) evolution
-2. stress_strain.png - Viscoplastic deformation (F_vp) and plastic strain (gamma)
-3. displacement_history.png - Applied loading history
-4. deformed_shape.png - 3D original vs deformed cube comparison
-5. vtk_timesteps/*.vtu - ParaView time series with state variables
+# Returns
+No explicit return value. Plot files and VTK outputs are written to disk.
 """
-function create_plots(t_hist, u_hist, states_history, grid, dh, u_final)
+function create_plots(t_hist, u_hist, tip_disp_hist, states_history, stress_history, grid, dh, u_final)
     
     println("\n" * "="^70)
     println("GENERATING VEVP CUBE TENSION TEST VISUALIZATIONS")
@@ -65,62 +38,37 @@ function create_plots(t_hist, u_hist, states_history, grid, dh, u_final)
     output_dir = "src/POSTPROCESS/plots"
     mkpath(output_dir)
     
-    # 1. Viscoelastic strain evolution (E_ve components)
-    plot_force_displacement(states_history, u_hist, grid, output_dir)
+    # Viscoelastic strain evolution (E_ve components)
+    plot_force_displacement(states_history, grid, output_dir)
     
-    # 2. Viscoplastic deformation (F_vp) and plastic strain (gamma)
-    plot_stress_strain(states_history, u_hist, output_dir)
+    # Viscoplastic deformation (F_vp) and plastic strain (gamma)
+    plot_stress_strain(states_history, output_dir)
     
-    # 3. Applied displacement loading history
-    plot_displacement_history(t_hist, u_hist, output_dir)
+    # Prescribed displacement history
+    plot_displacement_history(t_hist, tip_disp_hist, output_dir)
     
-    # 4. 3D deformed shape visualization
+    # 3D deformed-shape visualization
     plot_deformed_shape(grid, dh, u_final, output_dir)
     
-    # 5. Export VTK time series for ParaView
-    export_vtk_with_results(t_hist, u_hist, states_history, grid, dh, output_dir)
+    # VTK time-series export for ParaView
+    export_vtk_with_results(t_hist, u_hist, states_history, stress_history, grid, dh, output_dir)
     
     println("\n✅ All plots saved in: $output_dir/")
     println("="^70)
 end
 
 """
-    export_vtk_with_results(t_hist, u_hist, states_history, grid, dh, output_dir)
+    export_vtk_with_results(t_hist, u_hist, states_history, stress_history, grid, dh, output_dir)
 
-Export VTK time series for ParaView animation of VEVP cube tension test.
+Export per-step VTK files and a PVD collection for ParaView animation.
 
-Creates .pvd collection file with .vtu files for each time step containing:
+The export includes displacement, selected state-variable summaries, and stress
+components averaged per cell.
 
-Nodal Data:
-- Displacement field (3D vectors showing cube deformation)
-
-Cell Data (extracted from 108-component state variable array):
-- F_vp: Viscoplastic deformation gradient diagonal [statev[1], statev[2], statev[3]]
-- E_ve: Viscoelastic strain tensor diagonal [statev[10], statev[11], statev[12]]
-- gamma: Accumulated plastic strain [statev[19]]
-
-State Variable Layout (per quadrature point):
-- F_vp (1-9): Viscoplastic deformation gradient in Voigt notation
-- E_ve (10-18): Viscoelastic strain tensor in Voigt notation
-- gamma (19): Scalar plastic strain measure
-- b (20-28): Kinematic hardening tensor
-- AA (29-100): 8 Maxwell branch internal variables (9 components each)
-- BB (101-108): 8 Maxwell branch scalars
-
-NOTE: Stress is NOT exported - it's computed on-the-fly by UMAT (not in state vars).
-To export stress, would need to recompute from F and statev using UMAT.
-
-Output:
-- results.pvd - ParaView collection (open this in ParaView)
-- step_XXXX.vtu - Individual time step files
-
-Usage in ParaView:
-1. Open results.pvd
-2. Apply "Warp By Vector" filter to displacement field
-3. Color by F_vp_11, E_ve_33, or gamma_plastic
-4. Use animation controls to see time evolution
+# Returns
+No explicit return value. Writes `.vtu` and `.pvd` files.
 """
-function export_vtk_with_results(t_hist, u_hist, states_history, grid, dh, output_dir)
+function export_vtk_with_results(t_hist, u_hist, states_history, stress_history, grid, dh, output_dir)
     
     println("\n📊 Exporting VTK files for ParaView...")
     
@@ -156,6 +104,7 @@ function export_vtk_with_results(t_hist, u_hist, states_history, grid, dh, outpu
             # 101-108: BB (8 VE branch scalars)
             
             states = states_history[step]
+            stresses = stress_history[step]
             
             # Preallocate arrays for cell data
             gamma_plastic = zeros(n_cells)
@@ -166,19 +115,29 @@ function export_vtk_with_results(t_hist, u_hist, states_history, grid, dh, outpu
             E_ve_22 = zeros(n_cells)
             E_ve_33 = zeros(n_cells)
             E_ve_eqv = zeros(n_cells)
+            sigma_11 = zeros(n_cells)
+            sigma_22 = zeros(n_cells)
+            sigma_33 = zeros(n_cells)
+            sigma_12 = zeros(n_cells)
+            sigma_13 = zeros(n_cells)
+            sigma_23 = zeros(n_cells)
+            sigma_vm = zeros(n_cells)
             
             # Extract from state variables
             for cell_idx in 1:n_cells
                 cell_states = states[cell_idx]
+                cell_stresses = stresses[cell_idx]
                 n_qp = length(cell_states)
                 
                 # Average over quadrature points
                 F_vp_avg = zeros(3)
                 E_ve_avg = zeros(3)
                 gamma_avg = 0.0
+                sigma_avg = zeros(6)
                 
                 for qp in 1:n_qp
                     statev = cell_states[qp]
+                    sigma_qp = cell_stresses[qp]
                     
                     # F_vp diagonal components (1-3 in Voigt)
                     F_vp_avg[1] += statev[1]  # F_vp_11
@@ -192,11 +151,15 @@ function export_vtk_with_results(t_hist, u_hist, states_history, grid, dh, outpu
                     
                     # Accumulated plastic strain (19)
                     gamma_avg += statev[19]
+
+                    # Cauchy stress components (Voigt order: 11,22,33,12,13,23)
+                    sigma_avg .+= sigma_qp
                 end
                 
                 F_vp_avg ./= n_qp
                 E_ve_avg ./= n_qp
                 gamma_avg /= n_qp
+                sigma_avg ./= n_qp
                 
                 # Store in arrays
                 F_vp_11[cell_idx] = F_vp_avg[1]
@@ -211,6 +174,15 @@ function export_vtk_with_results(t_hist, u_hist, states_history, grid, dh, outpu
                 E_ve_eqv[cell_idx] = sqrt(E_ve_avg[1]^2 + E_ve_avg[2]^2 + E_ve_avg[3]^2)
                 
                 gamma_plastic[cell_idx] = gamma_avg
+                sigma_11[cell_idx] = sigma_avg[1]
+                sigma_22[cell_idx] = sigma_avg[2]
+                sigma_33[cell_idx] = sigma_avg[3]
+                sigma_12[cell_idx] = sigma_avg[4]
+                sigma_13[cell_idx] = sigma_avg[5]
+                sigma_23[cell_idx] = sigma_avg[6]
+                sigma_vm[cell_idx] = von_mises_stress(
+                    sigma_avg[1], sigma_avg[2], sigma_avg[3], sigma_avg[4], sigma_avg[5], sigma_avg[6]
+                )
             end
             
             # Write cell data to VTK using Ferrite v1.0 API
@@ -222,6 +194,13 @@ function export_vtk_with_results(t_hist, u_hist, states_history, grid, dh, outpu
             write_cell_data(vtk, E_ve_33, "E_ve_33")
             write_cell_data(vtk, E_ve_eqv, "E_ve_equivalent")
             write_cell_data(vtk, gamma_plastic, "gamma_plastic")
+            write_cell_data(vtk, sigma_11, "sigma_11")
+            write_cell_data(vtk, sigma_22, "sigma_22")
+            write_cell_data(vtk, sigma_33, "sigma_33")
+            write_cell_data(vtk, sigma_12, "sigma_12")
+            write_cell_data(vtk, sigma_13, "sigma_13")
+            write_cell_data(vtk, sigma_23, "sigma_23")
+            write_cell_data(vtk, sigma_vm, "sigma_von_mises")
             
             # Add time information
             pvd[t_hist[step]] = vtk
@@ -237,24 +216,16 @@ function export_vtk_with_results(t_hist, u_hist, states_history, grid, dh, outpu
     println("     1. Open ParaView")
     println("     2. File → Open → Select 'results.pvd'")
     println("     3. Apply → View time series animation")
-    println("     4. Color by: E_ve_equivalent, gamma_plastic, F_vp_11, etc.")
+    println("     4. Color by: E_ve_equivalent, gamma_plastic, F_vp_11, sigma_11, sigma_von_mises, etc.")
     println("     5. Add filters: Warp By Vector (u) to see deformation")
-    println("\n  ⚠️  NOTE: Stress is NOT exported (not stored in state variables)")
-    println("     Stress must be recomputed from F_vp, E_ve if needed")
 end
 
 """
-Plot 1: Viscoelastic Strain Evolution (E_ve components)
+    plot_force_displacement(states_history, grid, output_dir)
 
-Extracts E_ve from state variables: statev[10], statev[11], statev[12]
-Plots 4 curves: E_ve_11, E_ve_22, E_ve_33, and magnitude ||E_ve||
-
-The nonlinear curves demonstrate time-dependent viscoelastic response from
-8 Maxwell branches with relaxation times spanning 1s to 1000s.
-
-Output: src/POSTPROCESS/plots/force_displacement.png
+Plot viscoelastic strain component evolution over load steps.
 """
-function plot_force_displacement(states_history, u_hist, grid, output_dir)
+function plot_force_displacement(states_history, grid, output_dir)
     
     n_steps = length(states_history)
     E_ve_11_hist = zeros(n_steps)
@@ -313,25 +284,19 @@ function plot_force_displacement(states_history, u_hist, grid, output_dir)
 end
 
 """
-Plot 3: Displacement Loading History
+    plot_displacement_history(t_hist, tip_disp_hist, output_dir)
 
-Shows prescribed displacement at right face (x=1) over time steps.
-Loading: 0 → 0.3 units = 30% engineering strain in x-direction.
-
-This is the input to the simulation (controlled loading parameter).
-The material response (F_vp, E_ve, gamma, stress) is analyzed in other plots.
-
-Output: src/POSTPROCESS/plots/displacement_history.png
+Plot prescribed displacement history for the displacement-controlled test.
 """
-function plot_displacement_history(t_hist, u_hist, output_dir)
+function plot_displacement_history(t_hist, tip_disp_hist, output_dir)
     
-    steps = 1:length(u_hist)
-    u_mm = u_hist .* 1000  # m to mm (keep sign)
+    steps = 1:length(tip_disp_hist)
+    u_mm = tip_disp_hist .* 1000  # m to mm (keep sign)
     
     p = plot(steps, u_mm,
              xlabel="Load Step",
              ylabel="Applied Displacement [mm]",
-             title="Displacement Loading History (Cube Tension Test)",
+              title="Displacement Loading History (Cube Tension Test)",
              linewidth=3,
              marker=:circle,
              markersize=5,
@@ -348,10 +313,11 @@ function plot_displacement_history(t_hist, u_hist, output_dir)
 end
 
 """
-Plot 2: F_vp and Plastic Strain Evolution
-Shows viscoplastic deformation accumulation - VEVP nonlinear behavior
+    plot_stress_strain(states_history, output_dir)
+
+Plot viscoplastic deformation-gradient trends and accumulated plastic strain.
 """
-function plot_stress_strain(states_history, u_hist, output_dir)
+function plot_stress_strain(states_history, output_dir)
     
     n_steps = length(states_history)
     F_vp_11_hist = zeros(n_steps)
@@ -433,19 +399,9 @@ function plot_stress_strain(states_history, u_hist, output_dir)
 end
 
 """
-Plot 4: 3D Deformed Shape Visualization
+    plot_deformed_shape(grid, dh, u, output_dir)
 
-Compares original vs deformed cube using side-by-side 3D scatter plots:
-- Left: Original cube (1×1×1 units, blue)
-- Right: Deformed cube (colored by displacement magnitude, viridis)
-
-Features:
-- camera=(30, 30) for proper 3D perspective
-- Colorbar shows displacement magnitude distribution
-- Demonstrates elongation (x-dir) and contraction (y,z-dir Poisson effect)
-- Captures nonlinear VEVP behavior under 30% large strain
-
-Output: src/POSTPROCESS/plots/deformed_shape.png
+Create side-by-side 3D plots of original and deformed nodal coordinates.
 """
 function plot_deformed_shape(grid, dh, u, output_dir)
     
@@ -510,7 +466,7 @@ function plot_deformed_shape(grid, dh, u, output_dir)
     println("    Z-displacement range: [$(round(minimum(uz), digits=4)), $(round(maximum(uz), digits=4))] mm")
 end
 
-# Check if required packages are installed
+# Ensure optional VTK reader dependency is available for script-mode analysis.
 try
     using ReadVTK
     println("✅ Required packages available")
@@ -522,7 +478,9 @@ catch e
 end
 
 """
-Extract data from VTK file.
+    load_vtk_data(filename)
+
+Load mesh points, cells, point-data, and cell-data fields from a VTK file.
 """
 function load_vtk_data(filename::String)
     if !isfile(filename)
@@ -570,7 +528,9 @@ function von_mises_stress(σ11, σ22, σ33, σ12, σ13, σ23)
 end
 
 """
-Extract and visualize displacement field.
+    plot_displacement_field(points, point_data; output_dir="./output")
+
+Generate displacement-field diagnostics and figures from VTK point data.
 """
 function plot_displacement_field(points, point_data, output_dir="./output")
     mkpath(output_dir)
@@ -630,7 +590,9 @@ function plot_displacement_field(points, point_data, output_dir="./output")
 end
 
 """
-Extract and visualize stress field.
+    plot_stress_field(points, cell_data; output_dir="./output")
+
+Generate stress-distribution diagnostics and figures from VTK cell data.
 """
 function plot_stress_field(points, cell_data, output_dir="./output")
     mkpath(output_dir)
@@ -706,7 +668,9 @@ function plot_stress_field(points, cell_data, output_dir="./output")
 end
 
 """
-Create summary report.
+    create_summary_report(filename, u_mag, uz, σ_vm, σ33; output_dir="./output")
+
+Write a plain-text summary report for displacement and stress statistics.
 """
 function create_summary_report(filename, u_mag, uz, σ_vm, σ33, output_dir="./output")
     mkpath(output_dir)
@@ -754,7 +718,9 @@ function create_summary_report(filename, u_mag, uz, σ_vm, σ33, output_dir="./o
 end
 
 """
-Main post-processing function.
+    main()
+
+CLI entry point for standalone VTK-based post-processing.
 """
 function main()
     # Determine input file
