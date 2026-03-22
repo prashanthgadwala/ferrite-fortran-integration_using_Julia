@@ -4,9 +4,9 @@ A reproducible scientific workflow for coupling legacy Fortran UMAT constitutive
 
 ## Abstract
 
-This repository demonstrates a practical Julia-Fortran bridge for nonlinear finite-strain material simulation. A Fortran UMAT (ABAQUS-style interface) is compiled as a shared library and called from Julia via `ccall`, allowing reuse of legacy constitutive code while keeping finite element assembly, solver control, and postprocessing in Ferrite.jl.
+This repository demonstrates a practical Julia-Fortran bridge for nonlinear finite-strain material simulation. A Fortran UMAT (ABAQUS-style interface) is compiled as a shared library and called from Julia via `ccall`, allowing reuse of legacy constitutive code while keeping finite element assembly, solver control, and post-processing in Ferrite.jl.
 
-The current benchmark is a unit-cube uniaxial tension test using a finite-strain viscoelastic-viscoplastic (VEVP) epoxy model with 8 Maxwell branches and 108 state variables per integration point.
+The benchmark is a unit-cube uniaxial tension test using a finite-strain viscoelastic-viscoplastic (VEVP) model with 8 Maxwell branches and 108 state variables per integration point.
 
 ## Why This Repository
 
@@ -32,19 +32,19 @@ The current benchmark is a unit-cube uniaxial tension test using a finite-strain
 
 - Ferrite.jl driver with Newton-Raphson iterations and line-search stabilization.
 - Benchmark mesh: Q2 hexahedral unit cube (125 nodes, 375 displacement DOFs).
-- Loading protocol: 50 increments, dt = 100 s, total time = 5000 s.
+- Loading protocol for report validation: 50 increments, `dt = 100 s`, total `5000 s`.
 
 ### Validation Snapshot
 
 - Ferrite.jl and ABAQUS run with the same UMAT and loading definition.
 - Normalized stress-shape agreement: mean error 3.71%, maximum error 5.38%.
-- Typical Newton convergence for the VEVP case: 15-25 iterations per increment.
+- Typical Newton convergence in the validated VEVP run: 15-25 iterations per increment.
 
 ## Documentation
 
 - [docs/USER_GUIDE.md](docs/USER_GUIDE.md): installation, execution, customization
 - [docs/TECHNICAL_REFERENCE.md](docs/TECHNICAL_REFERENCE.md): formulation and implementation details
-- [docs/thesis.tex](docs/thesis.tex): most up-to-date report-level scientific documentation
+- [docs/PROJECT_REPORT.pdf](docs/PROJECT_REPORT.pdf): full project report
 
 ## Getting Started (First-Time Setup)
 
@@ -83,7 +83,7 @@ sudo apt update
 sudo apt install -y git julia gfortran
 ```
 
-If the distro Julia is too old, install from https://julialang.org/downloads/.
+If distro Julia is too old, install from https://julialang.org/downloads/.
 
 #### Windows
 
@@ -116,7 +116,7 @@ cd ferrite-fortran-integration_using_Julia
 ### 4. Install Julia Packages
 
 ```bash
-julia -e 'using Pkg; Pkg.add(["Ferrite", "Tensors", "LinearAlgebra", "Printf", "Plots"])'
+julia -e 'using Pkg; Pkg.add(["Ferrite", "Tensors", "LinearAlgebra", "Printf", "Plots", "WriteVTK"])'
 ```
 
 ### 5. Compile UMAT Shared Library
@@ -144,7 +144,7 @@ julia -e 'include("src/main.jl")'
 Primary outputs are written under:
 
 - `src/POSTPROCESS/plots/`
-- `src/POSTPROCESS/visualization/`
+- `src/POSTPROCESS/plots/vtk_timesteps/`
 
 ## Quick Start (Configured Machine)
 
@@ -161,7 +161,7 @@ For report-quality reproducibility, record:
 - Julia version
 - GFortran version
 - Git commit hash
-- Any modified material parameters (`PROPS` / UMAT inputs)
+- Any modified material parameters and runtime controls (`PROPS`, `n_steps`, `DTIME`, `u_load`)
 
 ## Repository Layout
 
@@ -172,12 +172,12 @@ src/
     umat.f                     # Fortran UMAT implementation
     ABA_PARAM.INC              # UMAT include definitions
   POSTPROCESS/
-    postprocess_results.jl     # plotting/postprocessing script
+    postprocess_results.jl     # plotting/post-processing script
 
 docs/
   USER_GUIDE.md
   TECHNICAL_REFERENCE.md
-  thesis.tex                   # latest report-grade reference
+  PROJECT_REPORT.pdf
 
 test/
   square.f
@@ -192,22 +192,11 @@ test/
 - `gfortran: command not found`
   Install GCC/GFortran and restart terminal.
 
-- Shared library compile errors
+- `could not load library libumat.so`
   Build from `src/Material_Models/` and verify compiler availability.
 
 - First run is slow
   Expected behavior due to Julia package precompilation.
-
-## Contributing
-
-Contributions are welcome, especially in:
-
-- solver scalability and parallel assembly
-- adaptive time stepping
-- additional constitutive models
-- exact/analytic consistent tangent implementations
-
-Please keep changes reproducible and document parameter/configuration updates.
 
 ## Citation
 
@@ -225,9 +214,3 @@ If you use this code in research, please cite:
 ## License
 
 MIT License. See [LICENSE](LICENSE).
-
-## Contact
-
-Prashanth Gadwala  
-Friedrich-Alexander University of Erlangen-Nuremberg  
-Project: https://github.com/prashanthgadwala/ferrite-fortran-integration_using_Julia

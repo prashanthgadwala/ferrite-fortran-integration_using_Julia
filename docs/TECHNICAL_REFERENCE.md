@@ -1,244 +1,108 @@
-# Technical Reference: VEVP Implementation
+# Technical Reference: VEVP Julia-Fortran Integration
 
-Technical documentation for developers and researchers working with the VEVP material model integration.
-
----
-
-## Table of Contents
-1. [System Architecture](#system-architecture)
-2. [VEVP Material Model](#vevp-material-model)
-3. [Implementation Details](#implementation-details)
-4. [Current Test Configuration](#current-test-configuration)
-5. [Convergence Analysis](#convergence-analysis)
-6. [Validation Strategy](#validation-strategy)
-
----
+Technical reference for developers and researchers working on the UMAT bridge and nonlinear FEM workflow.
 
 ## System Architecture
 
-### Integration Layers
-
-```
-Julia (Ferrite.jl) ←→ ccall ←→ Fortran UMAT ←→ Material physics
-     ↓                                              ↓
-  FEM solver                                  Stress integration
-  Newton iteration                            State evolution
+```text
+Julia (Ferrite.jl solver/assembly)
+        <-> ccall
+Fortran UMAT (stress, tangent, state update)
 ```
 
-**Key responsibilities:**
-- **Julia**: Mesh, assembly, linear solver, convergence
-- **Fortran**: Material constitutive law, stress update, tangent
+Responsibilities:
 
----
+- Julia (`src/main.jl`): grid, DOFs, boundary conditions, Newton loop, state management
+- Fortran (`src/Material_Models/umat.f`): constitutive integration and material tangent
+- Post-processing (`src/POSTPROCESS/postprocess_results.jl`): plots + VTK time series
 
-## VEVP Material Model
+## Benchmark and Model
 
-### Mathematical Formulation
+Current implementation target:
 
-**Total Response:**
-```
-σ = σ_equilibrium + σ_viscoelastic + σ_viscoplastic
-```
+- Unit-cube uniaxial tension benchmark
+- VEVP material with 8 Maxwell branches
+- 108 state variables per quadrature point
 
-### 1. Equilibrium (Long-Term Response)
+Representative parameter blocks are defined in `get_vevp_properties()` in `src/main.jl`:
 
-```
-K_∞ = 1.47 MPa    (bulk modulus)
-G_∞ = 0.564 MPa   (shear modulus)
-E_∞ ≈ 1.5 MPa     (Young's modulus)
-ν ≈ 0.33          (Poisson's ratio)
-```
+- Equilibrium moduli: `K_inf`, `G_inf`
+- Viscoplastic parameters: yield/hardening/rate terms
+- Branch moduli and relaxation times: `1, 3, 10, 30, 100, 300, 700, 1000` seconds
 
-### 2. Viscoelasticity (8 Maxwell Branches)
+## UMAT Interface Details
 
-**Stress evolution:**
-```
-K(t) = K_∞ + Σᵢ Kᵢ exp(-t/τᵢᵛᵒˡ)
-G(t) = G_∞ + Σᵢ Gᵢ exp(-t/τᵢᵈᵉᵛ)
-```
+The core bridge is `call_umat(...)` in `src/main.jl`.
 
-**Branch Parameters (RTM6 Epoxy):**
+Important implementation points:
 
-| Branch | Kᵢ (MPa) | τᵛᵒˡ (s) | Gᵢ (MPa) | τᵈᵉᵛ (s) | Physics |
-|--------|----------|----------|----------|----------|---------|
-| 1      | 1.0      | 1        | 0.5      | 1        | Fast molecular rearrangement |
-| 2      | 0.8      | 3        | 0.4      | 3        | Chain segment motion |
-| 3      | 0.6      | 10       | 0.3      | 10       | Local polymer relaxation |
-| 4      | 0.5      | 30       | 0.25     | 30       | Cooperative motion |
-| 5      | 0.4      | 100      | 0.2      | 100      | Network rearrangement |
-| 6      | 0.3      | 300      | 0.15     | 300      | Long-range relaxation |
-| 7      | 0.2      | 700      | 0.1      | 700      | Structural adaptation |
-| 8      | 0.1      | 1000     | 0.05     | 1000     | Matrix creep |
+- Fortran symbol call via `ccall((:umat_, UMAT_LIB_VEVP), ...)`
+- Character argument handling via explicit 80-byte buffer (`UInt8[80]`)
+- In-place updates for `stress`, `statev`, and `ddsdde`
+- Voigt mapping and tensor conversions handled in Julia before/after UMAT call
 
-**Total Initial Stiffness:**
-```
-K₀ = K_∞ + ΣKᵢ = 1.47 + 3.8 = 5.27 MPa  (3.6× equilibrium)
-G₀ = G_∞ + ΣGᵢ = 0.564 + 1.8 = 2.364 MPa (4.2× equilibrium)
-```
+## FEM Setup in Source Code
 
-### 3. Viscoplasticity (Rate-Dependent Yield)
+From `solve()` in `src/main.jl`:
 
-**Flow rule:**
-```
-ε̇ᵛᵖ = γ₀ (σₑq/σy)ⁿ
-```
+- Geometry: `L_length = L_width = L_height = 1.0`
+- Mesh: `N_length = N_width = N_height = 2` (8 hexahedral cells)
+- Interpolation: `Q2` displacement (`Lagrange{RefHexahedron, 2}()^3`)
+- Quadrature: `3 x 3 x 3`
+- BCs:
+  - left face: `u_x = 0`
+  - right face: displacement ramp in `x`
+  - one corner pin for `u_y = 0`, `u_z = 0` (RBM suppression)
 
-**Hardening:**
-```
-σy = σy0 + H εpᵐ
-```
+Default runtime controls in source:
 
-**Parameters:**
-```
-σy0 = 2.08 MPa (compression) / 1.67 MPa (tension)
-γ₀  = 0.001 s⁻¹
-n   = 10 (rate sensitivity)
-H   = 2.16 GPa (hardening modulus)
-m   = 5.4 (hardening exponent)
-```
+- `u_load = 0.3`
+- `n_steps = 100`
+- `DTIME = 0.1`
+- Newton loop with backtracking line search (`NEWTON_MAXITER = 150`)
 
-### State Variables (108 total per Gauss point)
+## State Variables (108)
 
-```
-statev[1-9]:     F_vp (viscoplastic deformation gradient)
-statev[10-18]:   Stress components
-statev[19-26]:   Maxwell branch 1 internal variables
-statev[27-34]:   Maxwell branch 2 internal variables
-...
-statev[91-98]:   Maxwell branch 8 internal variables
-statev[99-108]:  Additional history variables
-```
+The code and report use the following practical layout convention:
 
----
+- `1:9` viscoplastic deformation gradient components (`F_vp` in Voigt-style packing)
+- `10:18` viscoelastic strain components (`E_ve`)
+- `19` accumulated plastic measure (`gamma`)
+- remaining entries store branch/history variables used by the UMAT
 
-## Implementation Details
+Initialization in `src/main.jl` sets `F_vp` diagonal entries to identity at start.
 
-### 1. UMAT Interface (Julia ↔ Fortran)
+## Post-Processing Pipeline
 
-**Location:** `src/main.jl` lines 47-170
+`create_plots(...)` in `src/POSTPROCESS/postprocess_results.jl` writes:
 
-**Key function:** `call_umat()`
+- `src/POSTPROCESS/plots/force_displacement.png`
+- `src/POSTPROCESS/plots/stress_strain.png`
+- `src/POSTPROCESS/plots/displacement_history.png`
+- `src/POSTPROCESS/plots/deformed_shape.png`
+- `src/POSTPROCESS/plots/vtk_timesteps/results.pvd` and stepwise `.vtu`
 
-**Conversion steps:**
-```julia
-# 1. Compute deformation gradient
-F = I + ∇u
+The VTK export includes displacement and selected cell-averaged internal variables/stresses (for ParaView animation and inspection).
 
-# 2. Strain (Green-Lagrange)
-E = 0.5(F'F - I)
+## Validation Notes
 
-# 3. Voigt notation (6-component)
-ε = [E11, E22, E33, 2E12, 2E13, 2E23]  # Factor of 2 for shear!
+Project-report validation (same UMAT family against ABAQUS) reports:
 
-# 4. Call Fortran
-ccall((:umat_, UMAT_LIB), Cvoid, (...))
+- Mean normalized stress-shape error: `3.71%`
+- Maximum normalized stress-shape error: `5.38%`
 
-# 5. Convert stress back to tensor
-σ = [σ11 σ12 σ13]
-    [σ12 σ22 σ23]
-    [σ13 σ23 σ33]
-```
+The report benchmark setup uses 50 increments with physical time scaling (`dt = 100 s`, total `5000 s`).
 
-**Critical details:**
-- **CHARACTER*80**: Convert Julia string to `UInt8[80]` buffer
-- **Column-major**: Fortran matrices transposed from Julia
-- **Voigt convention**: Factor of 2 for shear components (engineering strain)
-- **DDSDDE**: 6×6 tangent matrix (∂σ/∂ε) in Voigt notation
+When reproducing report figures, ensure your runtime controls match report settings instead of development defaults.
 
-### 2. FEM Assembly
+## Known Practical Limitations
 
-**Element loop** → Gauss point loop → UMAT call → Accumulate K, g
+- Approximate/numerical tangent behavior can reduce Newton rate from ideal quadratic convergence.
+- Convergence sensitivity increases at larger load increments.
+- Reproducibility depends on matching both UMAT properties and time/load stepping choices.
 
-```julia
-FOR each element:
-  FOR each Gauss point:
-    ∇u = shape_function_gradients · u_elem
-    F = I + ∇u
-    σ, DDSDDE = call_umat(F, Δt, props, statev)
-    
-    Ke += B' · DDSDDE · B · detJ · w
-    ge += B' · σ · detJ · w
-  END
-END
-```
+## Related Documents
 
-**B matrix**: Strain-displacement operator (6×24 for Q1 hex)
-
-### 3. Newton-Raphson
-
-**Per load step:**
-```julia
-WHILE ||residual|| > tolerance:
-  K, g = assemble_global()
-  Δu = K \ g
-  u -= Δu
-END
-```
-
-**Settings**: tolerance = 1e-4, max_iter = 50
-
----
-
-## Current Test Configuration
-
-### Geometry
-- **Cantilever beam**: 10 cm × 1 cm × 1 cm
-- **Mesh**: 20×4×4 Q1 hexahedra (320 elements, 1575 DOFs)
-- **Quadrature**: 2×2×2 Gauss points (2560 total, 108 state vars each)
-
-### Loading
-- **Displacement control**: 1 cm tip deflection (10% strain)
-- **Load steps**: 100 (Δu = 0.1 mm per step)
-- **Time**: Δt = 100 s per step (10,000 s total)
-
-### Boundary Conditions
-- Left face: Fully clamped (u = 0)
-- Right face: uz = -10 mm prescribed
-
----
-
-## Convergence Analysis
-
-### Performance
-- **Per step**: ~3-5 seconds (27 iterations × 2560 UMAT calls)
-- **Full simulation**: ~6 minutes (100 steps)
-- **Memory**: < 5 MB total
-
-### Convergence Rate
-- **Typical**: 20-30 iterations per step
-- **Rate**: Linear (not quadratic)
-- **Reason**: Approximate UMAT tangent (numerical, not analytical)
-
-**Comparison**: ABAQUS/ANSYS show similar behavior (20-40 iterations) for complex materials
-
----
-
-## Validation Strategy
-
-1. **Analytical**: Compare tip deflection with beam theory (δ = FL³/3EI)
-2. **Stress gradient**: Verify linear through-thickness distribution
-3. **Relaxation**: Check multi-exponential force decay
-4. **State variables**: Validate F_vp evolution and incompressibility
-
----
-
-## Known Limitations
-
-1. **Linear Newton convergence** (not quadratic) - approximate UMAT tangent
-2. **Many load steps required** (100) - high initial stiffness from 8 branches
-3. **Tolerance compromise** (1e-4) - cannot reach 1e-8 without 100+ iterations
-
-**Future work**: Analytical tangent implementation for quadratic convergence
-
----
-
-## References
-
-- Zaïri et al. (2008): VEVP constitutive equations for rubber-modified polymers
-- Belytschko et al. (2000): Nonlinear Finite Elements
-- Ferrite.jl: https://ferrite-fem.github.io/Ferrite.jl/
-- ABAQUS UMAT: User Subroutines Reference Guide
-
----
-
-**For usage instructions**, see **[USER_GUIDE.md](USER_GUIDE.md)**
+- [USER_GUIDE.md](USER_GUIDE.md)
+- [PROJECT_REPORT.pdf](PROJECT_REPORT.pdf)
+- [../README.md](../README.md)
