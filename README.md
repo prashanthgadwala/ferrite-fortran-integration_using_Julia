@@ -1,88 +1,233 @@
-# ferrite-fortran-integration_using_Julia
+# Ferrite-Fortran Integration: VEVP Material Model Implementation
 
-This repository contains the implementation for a student thesis/project exploring the integration of advanced Fortran-based material models into the Ferrite.jl finite element (FE) toolbox in Julia. The project bridges the robust material modeling capabilities of Fortran with the modern features of Julia.
+A reproducible scientific workflow for coupling legacy Fortran UMAT constitutive models with the Julia-based Ferrite.jl finite element framework.
 
-## Overview
+## Abstract
 
-Material models are essential for simulating how materials react under loading and other conditions in finite element analysis. By integrating Fortran subroutines with Julia's Ferrite.jl library, this project aims to enhance the capability of FE simulations while demonstrating an efficient workflow for combining traditional and modern programming approaches.
+This repository demonstrates a practical Julia-Fortran bridge for nonlinear finite-strain material simulation. A Fortran UMAT (ABAQUS-style interface) is compiled as a shared library and called from Julia via `ccall`, allowing reuse of legacy constitutive code while keeping finite element assembly, solver control, and postprocessing in Ferrite.jl.
 
-### Objectives
-1. Understand Julia and Ferrite.jl.
-2. Set up a simple load case for an FE mesh using Ferrite.jl's native material model.
-3. Extend the implementation to call a Fortran-based material model for more advanced load cases.
-4. Implement and test the `UMAT` subroutine for finite strain viscoelastic-viscoplastic (VEVP) material modeling.
-5. Document the entire process and results.
+The current benchmark is a unit-cube uniaxial tension test using a finite-strain viscoelastic-viscoplastic (VEVP) epoxy model with 8 Maxwell branches and 108 state variables per integration point.
 
-## Repository Structure
+## Why This Repository
 
-- `src/`: Source code for Julia and Fortran implementations.
-  - `preprocessing/`: Directory for preprocessing tasks and material model implementations.
-    - `umat.f90`: Fortran UMAT subroutine for finite strain VEVP material modeling.
-  - `processing/`: Directory for processing tasks.
-    - `fe_simulation.jl`: FE simulation setup.
-  - `postprocessing/`: Directory for postprocessing tasks.
-  - `main.jl`: Main script for running simulations.
-  - `fortran_wrapper.jl`: Julia-Fortran integration code.
-- `test/`: Unit tests and example load case results.
-- `docs/`: Documentation and results, including plots or images from simulations.
-- `examples/`: Sample scripts to demonstrate basic and advanced use cases.
+- Reuses validated legacy UMAT implementations without full re-coding in Julia.
+- Keeps constitutive updates compiled (Fortran), while preserving Julia-level workflow flexibility.
+- Provides an end-to-end benchmark setup suitable for research reporting and reproducibility.
 
-## Progress
+## Technical Highlights
 
-### UMAT Subroutine
-- Implemented the `UMAT` subroutine in Fortran for finite strain viscoelastic-viscoplastic (VEVP) material modeling.
-- The subroutine includes:
-  - A Newton-Raphson solver for nonlinear equations.
-  - Numerical tangent computation.
-  - Support for 8 Maxwell viscoelastic branches.
-  - Hardcoded tolerances and maximum iterations for the solver.
-- Helper subroutines for matrix operations (e.g., determinant, inverse, dot products) and material property calculations have been added.
-- The `ABA_PARAM.INC` file has been created to define parameters such as the number of stress components, state variables, and material properties.
+### Constitutive Model (VEVP)
 
-### Integration with Julia
-- The Fortran `UMAT` subroutine will be compiled into a shared library (`.so`) for integration with Julia.
-- A wrapper script (`fortran_wrapper.jl`) is being developed to call the Fortran subroutine from Julia.
-- Initial tests with simple load cases are planned to validate the integration.
+- Finite-strain viscoelastic-viscoplastic coupling.
+- 8 Maxwell branches spanning relaxation times from 1 s to 1000 s.
+- 108 internal state variables per integration point for history-dependent response.
 
-### Compilation
-- The `UMAT` subroutine can be compiled using the following command:
-  ```bash
-  gfortran -o umat.so -shared -fPIC src/umat.f90
+### Julia-Fortran Integration
 
+- Fortran UMAT compiled as a shared library (`libumat.so`).
+- Called from Julia with `ccall` using in-place memory updates.
+- ABAQUS-compatible stress/tangent/state variable interface (`STRESS`, `DDSDDE`, `STATEV`).
 
-## Getting Started
+### Nonlinear FEM Workflow
 
-### Prerequisites
-- Julia (>= 1.8)
-- Ferrite.jl library
-- Fortran compiler (e.g., `gfortran`)
-- BLAS/LAPACK libraries (if needed for Fortran integration)
+- Ferrite.jl driver with Newton-Raphson iterations and line-search stabilization.
+- Benchmark mesh: Q2 hexahedral unit cube (125 nodes, 375 displacement DOFs).
+- Loading protocol: 50 increments, dt = 100 s, total time = 5000 s.
 
-### Installation
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/prashanthgadwala/ferrite-fortran-integration_using_Julia.git
-   cd ferrite-fortran-integration_using_Julia
-2. Download and install Julia
-   '''bash
-   curl -fsSL https://install.julialang.org | sh
-3. install Julia dependencies:
-   ```bash
-   import Pkg; Pkg.add("Ferrite")
-3. Compile Fortran material model subroutine:
-   ```bash
-   gfortran -o material_model.so -shared -fPIC src/PREPROCESSING/Material_Models/umat.f90
+### Validation Snapshot
 
-### Usage
-1. Run a simple load case:
-   ```bash
-   julia src/main.jl
-2. Modify and test more advanced load cases in the examples/ directory.
+- Ferrite.jl and ABAQUS run with the same UMAT and loading definition.
+- Normalized stress-shape agreement: mean error 3.71%, maximum error 5.38%.
+- Typical Newton convergence for the VEVP case: 15-25 iterations per increment.
 
-### Contribution
+## Documentation
 
-Contributions are welcome! Please create a fork, make changes, and open a pull request. For major changes, discuss them first via an issue.
+- [docs/USER_GUIDE.md](docs/USER_GUIDE.md): installation, execution, customization
+- [docs/TECHNICAL_REFERENCE.md](docs/TECHNICAL_REFERENCE.md): formulation and implementation details
+- [docs/thesis.tex](docs/thesis.tex): most up-to-date report-level scientific documentation
 
-### License
+## Getting Started (First-Time Setup)
 
-This project is licensed under the MIT License.
+Use this section if you are on a new machine.
+
+### 1. Install Required Software
+
+You need all of the following:
+
+- Git
+- Julia (recommended: 1.10 or newer)
+- GFortran compiler
+
+#### macOS
+
+1. Install Homebrew (if needed):
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+2. Install dependencies:
+
+```bash
+brew install git julia gcc
+```
+
+Notes:
+- `gcc` includes `gfortran`.
+- On Apple Silicon, Homebrew binaries are typically in `/opt/homebrew/bin`.
+
+#### Ubuntu/Debian
+
+```bash
+sudo apt update
+sudo apt install -y git julia gfortran
+```
+
+If the distro Julia is too old, install from https://julialang.org/downloads/.
+
+#### Windows
+
+1. Install Git: https://git-scm.com/download/win
+2. Install Julia: https://julialang.org/downloads/
+3. Install MSYS2: https://www.msys2.org/
+4. In MSYS2 shell, install gfortran:
+
+```bash
+pacman -S --needed mingw-w64-x86_64-gcc-fortran
+```
+
+5. Ensure `git`, `julia`, and `gfortran` are on your PATH.
+
+### 2. Verify Installation
+
+```bash
+git --version
+julia --version
+gfortran --version
+```
+
+### 3. Clone Repository
+
+```bash
+git clone https://github.com/prashanthgadwala/ferrite-fortran-integration_using_Julia.git
+cd ferrite-fortran-integration_using_Julia
+```
+
+### 4. Install Julia Packages
+
+```bash
+julia -e 'using Pkg; Pkg.add(["Ferrite", "Tensors", "LinearAlgebra", "Printf", "Plots"])'
+```
+
+### 5. Compile UMAT Shared Library
+
+```bash
+cd src/Material_Models
+gfortran -shared -fPIC -O2 umat.f -o libumat.so
+cd ../..
+```
+
+Windows fallback:
+
+```bash
+gfortran -shared -O2 umat.f -o umat.dll
+```
+
+### 6. Run Simulation
+
+```bash
+julia -e 'include("src/main.jl")'
+```
+
+### 7. Check Outputs
+
+Primary outputs are written under:
+
+- `src/POSTPROCESS/plots/`
+- `src/POSTPROCESS/visualization/`
+
+## Quick Start (Configured Machine)
+
+```bash
+cd src/Material_Models && gfortran -shared -fPIC -O2 umat.f -o libumat.so && cd ../..
+julia -e 'include("src/main.jl")'
+```
+
+## Reproducibility Checklist
+
+For report-quality reproducibility, record:
+
+- OS and architecture
+- Julia version
+- GFortran version
+- Git commit hash
+- Any modified material parameters (`PROPS` / UMAT inputs)
+
+## Repository Layout
+
+```text
+src/
+  main.jl                      # FEM driver and solver loop
+  Material_Models/
+    umat.f                     # Fortran UMAT implementation
+    ABA_PARAM.INC              # UMAT include definitions
+  POSTPROCESS/
+    postprocess_results.jl     # plotting/postprocessing script
+
+docs/
+  USER_GUIDE.md
+  TECHNICAL_REFERENCE.md
+  thesis.tex                   # latest report-grade reference
+
+test/
+  square.f
+  square.jl
+```
+
+## Common Issues
+
+- `julia: command not found`
+  Install Julia and restart terminal, or fix PATH.
+
+- `gfortran: command not found`
+  Install GCC/GFortran and restart terminal.
+
+- Shared library compile errors
+  Build from `src/Material_Models/` and verify compiler availability.
+
+- First run is slow
+  Expected behavior due to Julia package precompilation.
+
+## Contributing
+
+Contributions are welcome, especially in:
+
+- solver scalability and parallel assembly
+- adaptive time stepping
+- additional constitutive models
+- exact/analytic consistent tangent implementations
+
+Please keep changes reproducible and document parameter/configuration updates.
+
+## Citation
+
+If you use this code in research, please cite:
+
+```bibtex
+@software{gadwala2025ferrite_vevp,
+  author = {Gadwala, Prashanth},
+  title = {Ferrite-Fortran Integration: VEVP Material Model Implementation},
+  year = {2025},
+  url = {https://github.com/prashanthgadwala/ferrite-fortran-integration_using_Julia}
+}
+```
+
+## License
+
+MIT License. See [LICENSE](LICENSE).
+
+## Contact
+
+Prashanth Gadwala  
+Friedrich-Alexander University of Erlangen-Nuremberg  
+Project: https://github.com/prashanthgadwala/ferrite-fortran-integration_using_Julia

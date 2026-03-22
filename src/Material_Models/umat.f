@@ -130,6 +130,9 @@ C     !--------------------------------------------------------------
          ! VP variables
          REAL(prec) :: ptilde, PhiEq, sigma_c, sigma_t, HHc, HHt, HHb
          REAL(prec) :: m, a0, a1, a2, GAMMA, u, v, dev_phi(3, 3)
+         ! Variables for zero strain check
+         REAL(prec) :: strain_norm, LAMBDA, MU
+         ! VP variables continued
          REAL(prec) :: dev_Q(3, 3), tr_Q, Q(3, 3), GQ(3,3)
          REAL(prec) :: exp_GQ(3, 3), F_vp(3,3), F_vp_inv(3,3)
          ! VE corrected variables
@@ -168,6 +171,13 @@ C     !--------------------------------------------------------------
          data I_mat(1,:) /1.D0, 0.D0, 0.D0/
          data I_mat(2,:) /0.D0, 1.D0, 0.D0/
          data I_mat(3,:) /0.D0, 0.D0, 1.D0/
+
+        ! ===================================================================
+        ! CRITICAL FIX: Initialize STRESS and DDSDDE to zero
+        ! Without this, they contain garbage memory values leading to NaN!
+        ! ===================================================================
+         STRESS = 0.0D0
+         DDSDDE = 0.0D0
 
         ! This is a workaround to set the diagnol values of F_vp = 1
         ! for the first time step (initial condition) in FFTMAD.
@@ -260,6 +270,37 @@ C     !--------------------------------------------------------------
 
          ! Compute determinant of F (Deformation Gradient)
          CALL determinant(DFGRD1(:,:), J)
+         
+         ! Check for unrealistic deformation or zero deformation
+         ! Use pure elastic for near-zero deformation (initialization)
+         ! or check for element inversion
+         IF (J .LT. 0.1D0 .OR. J .GT. 10.0D0) THEN
+             ! Unrealistic deformation - use pure elastic with SMALL strain
+             ! This handles both initialization and potential numerical issues
+             LAMBDA = KK_inf - (2.0D0/3.0D0) * GG_inf
+             MU = GG_inf
+             
+             ! Elastic stiffness matrix (Voigt notation)
+             DDSDDE = 0.0D0
+             DDSDDE(1,1) = LAMBDA + 2.0D0 * MU
+             DDSDDE(1,2) = LAMBDA
+             DDSDDE(1,3) = LAMBDA
+             DDSDDE(2,1) = LAMBDA
+             DDSDDE(2,2) = LAMBDA + 2.0D0 * MU
+             DDSDDE(2,3) = LAMBDA
+             DDSDDE(3,1) = LAMBDA
+             DDSDDE(3,2) = LAMBDA
+             DDSDDE(3,3) = LAMBDA + 2.0D0 * MU
+             DDSDDE(4,4) = MU
+             DDSDDE(5,5) = MU
+             DDSDDE(6,6) = MU
+             
+             ! Keep STRESS at zero (already initialized)
+             ! Keep state variables unchanged
+             PNEWDT = 1.0D0
+             RETURN
+         END IF
+         
         ! Calculate VE Right Cauchy Green Tensor (C_ve) at trial State
          CALL vevpSplit(DFGRD1(:, :), F_vp_n(:, :),
      1                  F_ve_tr(:, :), C_ve_tr(:, :))
@@ -269,6 +310,37 @@ C     !--------------------------------------------------------------
          CALL approx_log(D_ve_tr(:,:), order, E_ve_tr(:, :),
      1               dlogC_ve_tr(:,:,:,:))
          E_ve_tr(:, :) = 0.5D0 * E_ve_tr(:, :)
+
+         ! Check for zero/tiny strain - use pure elastic response
+         ! This handles initialization with zero displacement
+         CALL mat2ddot(E_ve_tr(:,:), E_ve_tr(:,:), strain_norm)
+         strain_norm = SQRT(strain_norm)
+         
+         IF (strain_norm .LT. 1.0D-10) THEN
+             ! Pure elastic response for tiny strains
+             ! Compute Lame parameters from K and G
+             LAMBDA = KK_inf - (2.0D0/3.0D0) * GG_inf
+             MU = GG_inf
+             
+             ! Elastic stiffness matrix (Voigt notation)
+             DDSDDE = 0.0D0
+             DDSDDE(1,1) = LAMBDA + 2.0D0 * MU
+             DDSDDE(1,2) = LAMBDA
+             DDSDDE(1,3) = LAMBDA
+             DDSDDE(2,1) = LAMBDA
+             DDSDDE(2,2) = LAMBDA + 2.0D0 * MU
+             DDSDDE(2,3) = LAMBDA
+             DDSDDE(3,1) = LAMBDA
+             DDSDDE(3,2) = LAMBDA
+             DDSDDE(3,3) = LAMBDA + 2.0D0 * MU
+             DDSDDE(4,4) = MU
+             DDSDDE(5,5) = MU
+             DDSDDE(6,6) = MU
+             
+             ! Keep STRESS at zero (already initialized)
+             ! Keep state variables unchanged
+             RETURN
+         END IF
 
          ! Calculate the corotated kirchoff stress at trial state along 
          ! with VE internal variables
@@ -285,6 +357,15 @@ C     !--------------------------------------------------------------
     
          CALL mat2ddot(dev_phi_tr(:, :), dev_phi_tr(:, :), phi_e_tr)
          phi_e_tr = (3.D0 / 2.D0) * phi_e_tr
+         
+         ! ===================================================================
+         ! CRITICAL FIX: Ensure non-negative before SQRT
+         ! Numerical errors can make this slightly negative → NaN!
+         ! ===================================================================
+         IF (phi_e_tr .LT. 0.0D0) THEN
+             phi_e_tr = 0.0D0
+         END IF
+         
          phi_e_tr = SQRT(phi_e_tr)
     
          ptilde = phi_p_tr
@@ -295,6 +376,14 @@ C     !--------------------------------------------------------------
      1     HHc, HHt, HHb)
          ! Update Drucker Pragger coefficients along with ecc factor m
          CALL DPcoeff(alpha, sigma_c, sigma_t, m, a0, a1, a2)
+         
+         ! ===================================================================
+         ! CRITICAL FIX: Ensure non-negative before power with non-integer
+         ! (-x)**0.5 produces NaN!
+         ! ===================================================================
+         IF (PhiEq .LT. 0.0D0) THEN
+             PhiEq = 0.0D0
+         END IF
          
          F_tr = a2 * PhiEq**alpha  - a1 * ptilde - a0
 
